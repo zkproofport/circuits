@@ -1,26 +1,25 @@
 # ZKProofport Circuit Library
 
-This repository contains a collection of Noir circuits used within the ZKProofport protocol. Each circuit is designed to generate proofs for specific types of private attestations.
-
 ## Overview
 
-ZKProofport is a privacy infrastructure enabling users to prove certain qualifications (e.g., KYC completion, membership in a group) to dApps without revealing their personal information. This repository houses the core cryptographic logic—the Noir circuits—required to generate these proofs.
+This repository contains the collection of Noir circuits used within the ZKProofport protocol. Each circuit is a standalone module designed to generate zero-knowledge proofs for specific on-chain or off-chain attestations.
 
-## Directory Structure
+ZKProofport is a privacy infrastructure enabling users to prove certain qualifications (e.g., KYC completion, email domain ownership) to dApps without revealing their personal information. This repository houses the core cryptographic logic—the Noir circuits—required to generate these proofs.
 
-* **`coinbase-kyc/`**: Contains the circuit for ZK proofs based on Coinbase on-chain KYC attestations (EAS). (Currently under development)
-* **`utils/`** (Example): May contain utility functions or libraries (e.g., Keccak256, Merkle Tree implementations) shared across multiple circuits.
-* **`[Future Circuit Dirs]/`**: Will house circuits for other types of attestations planned for future support (e.g., `twitter-followers/`, `github-contributions/`).
+## Available Circuits
 
-## Security & Contribution
+This library is designed to be extensible. Our first and most complex circuit serves as the technical foundation for future development.
 
-The circuits currently under development have not undergone production-level security audits. Use with caution.
+  * **`coinbase-kyc/`**: (Complete) An advanced circuit for generating ZK proofs of Coinbase on-chain KYC attestations. This circuit securely verifies the RLP-encoded EIP-1559 transaction, validates the Coinbase attester's signature using a high-performance hybrid (off-chain/on-chain) method, and confirms signer validity against a flexible Merkle root.
 
-Bug reports and feature suggestions are always welcome via GitHub Issues. For security vulnerabilities, please contact us privately.
+  * **`[Future Circuit Dirs]/`**: New circuits for various on-chain state proofs (e.g., Proof of NFT Ownership) or other off-chain data (e.g., Proof of GitHub Contribution) will be added here.
+
+## Security & Disclaimer
+
+The circuits in this repository, including the completed `coinbase-kyc` circuit, are experimental and have not yet undergone a formal, independent security audit. They are provided as-is for research, testing, and community feedback.
+
+We strongly advise caution when integrating these circuits into systems where tangible assets are at stake. Bug reports and feature suggestions are always welcome via GitHub Issues. For security vulnerabilities, please contact us privately.
 
 ## License
 
 [MIT](https://www.google.com/search?q=LICENSE)
-
-
-
