@@ -1,59 +1,57 @@
-// ===================================================================
-// Imports
-// ===================================================================
+// ZKProofport: Private Coinbase KYC Attestation Verifier (Advanced)
+//
+// This circuit proves ownership of a Coinbase KYC'd address without
+// revealing the address, the transaction, or the attester's signature.
+//
+// It uses a hybrid verification model for performance and a
+// Merkle tree for flexible signer validation.
+//
+// Key Improvements over Basic Circuit:
+// - Complete privacy: user_address is hidden
+// - Anti-replay: signal_hash prevents proof reuse
+// - Flexible signer management: Merkle tree instead of hardcoded array
+// - Hybrid verification: JavaScript ecrecover + circuit signature verification
 
-// Standard library for signature verification and utilities
 use dep::std;
-// Keccak256 hash function
 use dep::keccak256::keccak256;
-// RLP decoding library (as per the provided context)
-use dep::noir_trie_proofs::rlp;
-// (Note: `rlp::encode_list` is a hypothetical function needed for
-// unsigned hash calculation, assuming the library or a helper provides it)
-use dep::noir_trie_proofs::rlp::{decode, encode_list}; // Assuming `encode_list` exists
 
-// ===================================================================
+mod rlp;  // RLP library ported to Noir 1.0
+mod eip1559_tx_parser;  // EIP-1559 transaction parser (Type 0x02 only)
+mod merkle;
+
 // Global Constants
-// ===================================================================
 
-// Coinbase Attester Contract address on Base Mainnet
+/// Coinbase Attester Contract address (the 'to' address)
+/// 0x357458739F90461b99789350868CD7CF330Dd7EE
 global COINBASE_ATTESTER_CONTRACT: [u8; 20] = [
     0x35, 0x74, 0x58, 0x73, 0x9F, 0x90, 0x46, 0x1b,
     0x99, 0x78, 0x93, 0x50, 0x86, 0x8C, 0xD7, 0xCF,
     0x33, 0x0D, 0xd7, 0xEE
 ];
 
-// Function selector for "attestAccount(address)"
-// keccak256("attestAccount(address)")[..4]
-global ATTEST_ACCOUNT_SELECTOR: [u8; 4] = [0x41, 0x7b, 0x2e, 0x6e];
-
-// EIP-1559 Transaction Type byte
-global EIP1559_TX_TYPE: u8 = 0x02;
+/// Function selector for "attestAccount(address)"
+/// 0x56feed5e
+global ATTEST_ACCOUNT_SELECTOR: [u8; 4] = [0x56, 0xfe, 0xed, 0x5e];
 
 // ===================================================================
 // Helper Functions
 // ===================================================================
 
-/**
- * @notice Concatenates two 32-byte arrays (e.g., public key x and y).
- */
+/// Concatenates public key x and y coordinates
 fn concat_pubkey(pubkey_x: [u8; 32], pubkey_y: [u8; 32]) -> [u8; 64] {
-    let mut out: [u8; 64] = [0; 64];
+    let mut result: [u8; 64] = [0; 64];
     for i in 0..32 {
-        out[i] = pubkey_x[i];
-        out[i + 32] = pubkey_y[i];
+        result[i] = pubkey_x[i];
+        result[i + 32] = pubkey_y[i];
     }
-    out
+    result
 }
 
-/**
- * @notice Derives an Ethereum address from uncompressed public key coordinates.
- * @dev Address = last 20 bytes of keccak256(x || y)
- */
+/// Derives an Ethereum address from a public key
+/// address = keccak256(pubkey)[12..32]
 fn derive_address_from_pubkey(pubkey_x: [u8; 32], pubkey_y: [u8; 32]) -> [u8; 20] {
     let pubkey_full = concat_pubkey(pubkey_x, pubkey_y);
     let pubkey_hash: [u8; 32] = keccak256(pubkey_full, 64);
-    
     let mut derived_address: [u8; 20] = [0; 20];
     for i in 0..20 {
         derived_address[i] = pubkey_hash[12 + i];
@@ -61,55 +59,30 @@ fn derive_address_from_pubkey(pubkey_x: [u8; 32], pubkey_y: [u8; 32]) -> [u8; 20
     derived_address
 }
 
-/**
- * @notice Creates an Ethereum Personal Sign message hash ("\x19Ethereum Signed Message:\n32" + hash).
- */
+/// Creates the standard "\x19Ethereum Signed Message:\n32" hash
+/// Used for personal_sign verification
 fn create_eth_signed_message_hash(digest: [u8; 32]) -> [u8; 32] {
-    let prefix: [u8; 26] = [
-        0x19, 0x45, 0x74, 0x68, 0x65, 0x72, 0x65, 0x75, 0x6d, 0x20,
-        0x53, 0x69, 0x67, 0x6e, 0x65, 0x64, 0x20, 0x4d, 0x65, 0x73,
-        0x73, 0x61, 0x67, 0x65, 0x3a, 0x0a
+    // Ethereum signed message prefix: "\x19Ethereum Signed Message:\n32"
+    let prefix: [u8; 28] = [
+        0x19, 0x45, 0x74, 0x68, 0x65, 0x72, 0x65, 0x75,
+        0x6d, 0x20, 0x53, 0x69, 0x67, 0x6e, 0x65, 0x64,
+        0x20, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65,
+        0x3a, 0x0a, 0x33, 0x32  // "\x19Ethereum Signed Message:\n32"
     ];
-    let length: [u8; 2] = [0x33, 0x32]; // "32"
-    let mut message: [u8; 60] = [0; 60];
 
-    for i in 0..26 { message[i] = prefix[i]; }
-    for i in 0..2 { message[26 + i] = length[i]; }
-    for i in 0..32 { message[28 + i] = digest[i]; }
+    let mut message: [u8; 60] = [0; 60]; // 28 + 32
+
+    // Copy prefix
+    for i in 0..28 {
+        message[i] = prefix[i];
+    }
+
+    // Copy digest
+    for i in 0..32 {
+        message[28 + i] = digest[i];
+    }
 
     keccak256(message, 60)
-}
-
-/**
- * @notice Calculates the EIP-1559 unsigned transaction hash for signature verification.
- * @dev This is the most complex part. It assumes `rlp::decode` returns a list of fields
- * and a hypothetical `rlp::encode_list` exists to re-encode the unsigned part.
- * @param decoded_tx_fields A list of decoded transaction fields (12 items for EIP-1559).
- * @return The 32-byte hash (keccak256(0x02 || rlp(unsigned_fields)))
- */
-fn get_unsigned_eip1559_hash(decoded_tx_fields: [rlp::DecodedItem; 12]) -> [u8; 32] {
-    // EIP-1559 unsigned fields are the first 9 items:
-    // [chainId, nonce, maxPriorityFeePerGas, maxFeePerGas, gasLimit, to, value, data, accessList]
-    let unsigned_fields: [rlp::DecodedItem; 9] = [
-        decoded_tx_fields[0], decoded_tx_fields[1], decoded_tx_fields[2],
-        decoded_tx_fields[3], decoded_tx_fields[4], decoded_tx_fields[5],
-        decoded_tx_fields[6], decoded_tx_fields[7], decoded_tx_fields[8]
-    ];
-
-    // Hypothetical: RLP-encode this list of 9 items.
-    // This requires a helper or library function.
-    let (rlp_unsigned_payload, rlp_len) = rlp::encode_list(unsigned_fields);
-
-    // Create the full message to hash: 0x02 || rlp_payload
-    // We assume a max payload size (e.g., 256 bytes) for the buffer.
-    let mut message_to_hash: [u8; 257] = [0; 257];
-    message_to_hash[0] = EIP1559_TX_TYPE;
-    for i in 0..rlp_len {
-        message_to_hash[i + 1] = rlp_unsigned_payload[i];
-    }
-    
-    // Hash the message
-    keccak256(message_to_hash, rlp_len + 1)
 }
 
 // ===================================================================
@@ -118,36 +91,47 @@ fn get_unsigned_eip1559_hash(decoded_tx_fields: [rlp::DecodedItem; 12]) -> [u8; 
 
 fn main(
     // ============ Public Inputs ============
-    // A unique challenge hash (e.g., keccak256(nonce)) provided by the dApp.
+    // (Visible to the Verifier)
+
+    // Anti-replay challenge from the dApp
     signal_hash: pub [u8; 32],
 
+    // The root hash of the dApp's *current* list of valid Coinbase signers
+    signer_list_merkle_root: pub [u8; 32],
+
     // ============ Private Inputs ============
-    // All sensitive information is kept hidden from the verifier.
+    // (Provided by the User/Prover, kept hidden)
 
     // --- Part 1: User Ownership Inputs ---
-    user_address: [u8; 20],         // The user's KYC'd address
-    user_signature: [u8; 64],       // The user's signature over `signal_hash`
+    user_address: [u8; 20],
+    user_signature: [u8; 64],  // r + s (without v)
     user_pubkey_x: [u8; 32],
     user_pubkey_y: [u8; 32],
 
     // --- Part 2: On-Chain Fact Inputs ---
-    raw_transaction: [u8; 300],     // RLP-encoded Coinbase KYC TX (padded)
-    tx_length: u32,                 // Actual length of raw_transaction
-    
-    // Pre-calculated via ecrecover in JS
-    coinbase_attester_pubkey_x: [u8; 32], // Coinbase attester's public key X
-    coinbase_attester_pubkey_y: [u8; 32]  // Coinbase attester's public key Y
+    // Padded RLP-encoded attestation TX
+    raw_transaction: [u8; 300],
+    tx_length: u32,
+
+    // Pre-calculated by JS ecrecover (Hybrid model)
+    coinbase_attester_pubkey_x: [u8; 32],
+    coinbase_attester_pubkey_y: [u8; 32],
+
+    // Merkle proof inputs (for signer verification)
+    coinbase_signer_merkle_proof: [[u8; 32]; 8],  // Max depth 8 (supports up to 256 signers)
+    coinbase_signer_leaf_index: u32,
+    merkle_proof_depth: u32,
 ) {
     // ===================================================================
     // PART 1: User Ownership Verification
-    // "I am the owner of `user_address` and I am generating this proof for `signal_hash`."
+    // "I am the owner of `user_address` and I am proving this for `signal_hash`."
     // ===================================================================
 
-    // 1. Verify the user's public key matches the `user_address`
+    // 1. Verify user's public key matches their address
     let derived_user_address = derive_address_from_pubkey(user_pubkey_x, user_pubkey_y);
-    assert(derived_user_address == user_address);
+    assert(derived_user_address == user_address, "User pubkey does not match address");
 
-    // 2. Verify the user signed the dApp's challenge (`signal_hash`)
+    // 2. Verify user signed the dApp's challenge
     let message_hash = create_eth_signed_message_hash(signal_hash);
     let valid_user_sig = std::ecdsa_secp256k1::verify_signature(
         user_pubkey_x,
@@ -155,75 +139,92 @@ fn main(
         user_signature,
         message_hash
     );
-    assert(valid_user_sig);
+    assert(valid_user_sig, "Invalid user signature on signal_hash");
 
     // ===================================================================
-    // PART 2: On-Chain Fact Verification (The Core Logic)
-    // "This `user_address` was verifiably attested by Coinbase on-chain."
+    // PART 2: On-Chain Fact Verification (The Hybrid Model)
+    // "The `raw_transaction` is authentic and was signed by a *valid* Coinbase signer."
     // ===================================================================
 
-    // 3. (CRITICAL) Securely decode the RLP-encoded transaction
-    //    We assume the tx is EIP-1559 (type 0x02), which is standard on Base.
-    assert(raw_transaction[0] == EIP1559_TX_TYPE);
-    
-    // Decode the RLP payload *after* the type byte.
-    // We assume `rlp::decode` can parse the list and `rlp::decode_as_list` returns an array.
-    // This part is highly dependent on the library's actual API.
-    let decoded_tx_fields: [rlp::DecodedItem; 12] = rlp::decode_as_list(raw_transaction[1..], tx_length - 1);
+    // 3. Securely decode the RLP transaction
+    //    Note: EIP-1559 only - Coinbase attestations use Type 0x02 transactions
+    let unsigned_tx_hash = eip1559_tx_parser::create_unsigned_tx_hash(raw_transaction, tx_length);
 
-    // Extract fields based on EIP-1559 structure
-    // (This requires `rlp::DecodedItem` to have methods like `as_bytes` or `as_field`)
-    let to_address: [u8; 20] = decoded_tx_fields[5].as_bytes_20(); // [5] is 'to'
-    let calldata: [u8; 36] = decoded_tx_fields[7].as_bytes_36(); // [7] is 'data'
-    let calldata_len: u32 = decoded_tx_fields[7].length();
-    let sig_y_parity: u8 = decoded_tx_fields[9].as_u8(); // [9] is 'v'
-    let sig_r: [u8; 32] = decoded_tx_fields[10].as_bytes_32(); // [10] is 'r'
-    let sig_s: [u8; 32] = decoded_tx_fields[11].as_bytes_32(); // [11] is 's'
+    // 4. (CRITICAL) Verify the signature *before* trusting the pubkey
+    //    This checks: "Does the provided pubkey match the signature on this TX?"
+    //    Note: The signature is embedded in raw_transaction, we extract it using RLP
+    let tx_signature = eip1559_tx_parser::extract_signature_from_tx(raw_transaction);
 
-    // 4. (SECURITY) Verify the Coinbase attester signed this transaction
-    //    This proves the TX is authentic and originated from Coinbase.
-    
-    // 4a. Re-calculate the hash that was signed (unsigned tx hash)
-    let unsigned_tx_hash = get_unsigned_eip1559_hash(decoded_tx_fields);
+    // Extract r, s from signature (v is at the end)
+    let mut signature_r: [u8; 32] = [0; 32];
+    let mut signature_s: [u8; 32] = [0; 32];
+    for i in 0..32 {
+        signature_r[i] = tx_signature[i];
+        signature_s[i] = tx_signature[32 + i];
+    }
 
-    // 4b. Combine r and s into a 64-byte signature
-    let coinbase_signature = concat_pubkey(sig_r, sig_s); // Re-using helper
-    
-    // 4c. Verify the signature
+    // Combine r and s for verify_signature
+    let mut coinbase_signature: [u8; 64] = [0; 64];
+    for i in 0..32 {
+        coinbase_signature[i] = signature_r[i];
+        coinbase_signature[32 + i] = signature_s[i];
+    }
+
     let valid_coinbase_sig = std::ecdsa_secp256k1::verify_signature(
-        coinbase_attester_pubkey_x, // Private input from JS
-        coinbase_attester_pubkey_y, // Private input from JS
-        coinbase_signature,         // Extracted from RLP
-        unsigned_tx_hash            // Calculated from RLP
+        coinbase_attester_pubkey_x,  // Private input from JS
+        coinbase_attester_pubkey_y,  // Private input from JS
+        coinbase_signature,          // Extracted from RLP
+        unsigned_tx_hash
     );
-    assert(valid_coinbase_sig);
+    assert(valid_coinbase_sig, "Invalid TX signature");
 
-    // 5. Verify the transaction was sent to the correct Coinbase contract
-    assert(to_address == COINBASE_ATTESTER_CONTRACT);
+    // 5. (CRITICAL) Verify the signer is in the valid list
+    //    This checks: "Is this pubkey *authorized* by the dApp?"
+
+    // 5a. Derive the signer's address from the pubkey
+    let derived_signer_address = derive_address_from_pubkey(
+        coinbase_attester_pubkey_x,
+        coinbase_attester_pubkey_y
+    );
+
+    // 5b. Create the leaf hash for the Merkle tree
+    let leaf_hash = keccak256(derived_signer_address, 20);
+
+    // 5c. Verify the leaf against the public Merkle root
+    let calculated_root = merkle::verify_merkle_proof(
+        leaf_hash,
+        coinbase_signer_leaf_index,
+        coinbase_signer_merkle_proof,
+        merkle_proof_depth
+    );
+
+    assert(calculated_root == signer_list_merkle_root, "Signer not in valid list");
 
     // ===================================================================
     // PART 3: The Logical Link
-    // "Does the TX from Part 2 *actually* apply to the user from Part 1?"
+    // "Does the *authentic* TX from Part 2 *actually* apply to the `user_address` from Part 1?"
     // ===================================================================
 
-    // 6. Verify the transaction's calldata is `attestAccount(user_address)`
-    
-    // 6a. Check calldata format is `attestAccount(address)` (4 + 32 = 36 bytes)
-    assert(calldata_len == 36);
-    
-    // 6b. Check for the correct function selector
-    assert(calldata[0..4] == ATTEST_ACCOUNT_SELECTOR);
-    
-    // 6c. (CRITICAL LINK) Check that the address in the calldata
-    //     is the same `user_address` from Part 1.
-    let mut calldata_address: [u8; 20] = [0; 20];
-    for i in 0..20 {
-        calldata_address[i] = calldata[16 + i]; // 12-byte padding
+    // 6. Verify the transaction's contents (destination and data)
+    let to_address = eip1559_tx_parser::extract_to_address(raw_transaction);
+    assert(to_address == COINBASE_ATTESTER_CONTRACT, "TX sent to wrong contract");
+
+    // 7. Verify calldata format
+    let calldata = eip1559_tx_parser::extract_calldata(raw_transaction);
+
+    // Check function selector
+    let mut selector: [u8; 4] = [0; 4];
+    for i in 0..4 {
+        selector[i] = calldata[i];
     }
-    
-    assert(calldata_address == user_address);
+    assert(selector == ATTEST_ACCOUNT_SELECTOR, "Invalid function selector");
+
+    // 8. (FINAL LINK) Verify the address in the calldata matches the user's address
+    let calldata_address = eip1559_tx_parser::extract_address_from_calldata(calldata);
+
+    assert(calldata_address == user_address, "Calldata address does not match user_address");
 
     // ===================================================================
-    // Verification Complete
+    // If all assertions pass, the proof is valid!
     // ===================================================================
 }
