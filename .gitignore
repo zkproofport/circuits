@@ -2,8 +2,16 @@
 *.pk
 *.ccs
 *.so
-*.vk
 *-keypair.json
 
-# Keep JSON circuit definitions
-!*.json
+# OMC (oh-my-claudecode)
+.omc/
+
+# Git worktrees
+.worktree/
+
+# Private inputs (contains sensitive witness data)
+**/Prover.toml
+
+# Proof outputs (contains witness-derived data)
+**/target/proof/
