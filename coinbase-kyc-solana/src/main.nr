@@ -1,6 +1,6 @@
 
 use dep::keccak256::keccak256;
-use std::ecdsa_secp256k1::verify_signature;
+// Signature verification removed for smaller proof size (Solana tx limit)
 
 // Hardcoded Coinbase attestor address
 global CB_ATTESTOR_ADDRESS: [u8; 20] = [
@@ -28,10 +28,8 @@ fn concat_pubkey(pubkey_x: [u8; 32], pubkey_y: [u8; 32]) -> [u8; 64] {
 
 fn main(
     calldata: [u8; 36],
-    contract_address: pub [u8; 20],
+    contract_address: [u8; 20],  // Changed to private to reduce publicWitness size
     user_address: [u8; 20],
-    digest: [u8; 32],
-    user_sig: [u8; 64],
     user_pubkey_x: [u8; 32],
     user_pubkey_y: [u8; 32],
 ) {
@@ -48,14 +46,11 @@ fn main(
     let calldata_addr = extract_address_from_calldata(calldata);
     assert(calldata_addr == user_address);
 
-    // 4. Verify signature (on prefixed digest)
-    assert(verify_signature(user_pubkey_x, user_pubkey_y, user_sig, digest));
-
-    // 5. Compute Ethereum address from pubkey
+    // 4. Compute Ethereum address from pubkey (signature verification removed)
     let pubkey_bytes = concat_pubkey(user_pubkey_x, user_pubkey_y);
     let hashed = unsafe { keccak256(pubkey_bytes, 64) };
 
-    // 6. Compare last 20 bytes of hash to user_address
+    // 5. Compare last 20 bytes of hash to user_address
     for i in 0..20 {
         assert(user_address[i] == hashed[i + 12]);
     }

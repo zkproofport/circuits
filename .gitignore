@@ -1,0 +1,9 @@
+# Noir artifacts (large files)
+*.pk
+*.ccs
+*.so
+*.vk
+*-keypair.json
+
+# Keep JSON circuit definitions
+!*.json
