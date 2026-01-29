@@ -43,7 +43,8 @@ BB_VERSION=$(bb --version)
 echo "bb CLI version: $BB_VERSION"
 echo ""
 
-rm -rf ./target
+rm -rf ./target/proof ./target/vk
+rm -f ./target/*.json ./target/*.sol
 
 # 1. Compile Noir circuit
 echo "1. Compiling Noir circuit..."
