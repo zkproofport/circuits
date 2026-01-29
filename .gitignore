@@ -15,3 +15,15 @@
 
 # Proof outputs (contains witness-derived data)
 **/target/proof/
+
+# Environment variables (contains sensitive keys)
+.env
+.env.development
+.env.production
+
+# Foundry build artifacts
+out/
+cache/
+
+# Foundry dependencies (restore with: forge install)
+lib/
