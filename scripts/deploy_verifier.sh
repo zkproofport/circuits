@@ -70,8 +70,8 @@ case $NETWORK in
         RPC_URL="$BASE_SEPOLIA_RPC_URL"
         CHAIN_ID=84532
         EXPLORER="https://sepolia.basescan.org"
-        VERIFY_API_KEY="$BASESCAN_API_KEY"
-        VERIFY_URL="https://api-sepolia.basescan.org/api"
+        VERIFY_API_KEY="$ETHERSCAN_API_KEY"
+        VERIFY_URL="https://api.etherscan.io/v2/api?chainid=84532"
         ;;
     sepolia)
         RPC_URL="$SEPOLIA_RPC_URL"
@@ -84,8 +84,8 @@ case $NETWORK in
         RPC_URL="$BASE_RPC_URL"
         CHAIN_ID=8453
         EXPLORER="https://basescan.org"
-        VERIFY_API_KEY="$BASESCAN_API_KEY"
-        VERIFY_URL="https://api.basescan.org/api"
+        VERIFY_API_KEY="$ETHERSCAN_API_KEY"
+        VERIFY_URL="https://api.etherscan.io/v2/api?chainid=8453"
         ;;
     mainnet)
         RPC_URL="$MAINNET_RPC_URL"

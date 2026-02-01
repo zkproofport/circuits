@@ -42,6 +42,10 @@ fn main(
     // The root hash of the dApp's *current* list of valid Coinbase signers
     signer_list_merkle_root: pub [u8; 32],
 
+    // Scope and nullifier for Sybil resistance
+    scope: pub [u8; 32],           // keccak256(scope_string)
+    nullifier: pub [u8; 32],       // keccak256(user_secret ++ scope)
+
     // ============ Private Inputs ============
     // (Provided by the User/Prover, kept hidden)
 
@@ -166,6 +170,12 @@ fn main(
     let calldata_address = eip1559_tx_parser::extract_address_from_calldata(calldata);
 
     assert(calldata_address == user_address, "Calldata address does not match user_address");
+
+    // ===================================================================
+    // PART 4: Nullifier Verification (Sybil Resistance)
+    // "The nullifier is correctly derived from user_address, signal_hash, and scope."
+    // ===================================================================
+    coinbase_libs::nullifier::verify_nullifier(user_address, signal_hash, scope, nullifier);
 
     // ===================================================================
     // If all assertions pass, the proof is valid!

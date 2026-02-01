@@ -2,65 +2,107 @@
 
 ## Overview
 
-This repository contains the collection of Noir circuits used within the ZKProofport protocol. Each circuit is a standalone module designed to generate zero-knowledge proofs for specific on-chain or off-chain attestations.
-
-ZKProofport is a privacy infrastructure enabling users to prove certain qualifications (e.g., KYC completion, email domain ownership) to dApps without revealing their personal information. This repository houses the core cryptographic logic—the Noir circuits—required to generate these proofs.
+Noir ZK circuits for the ProofPort protocol. Each circuit generates zero-knowledge proofs for specific on-chain attestations without revealing user identity.
 
 ## Available Circuits
 
-This library is designed to be extensible. Our first and most complex circuit serves as the technical foundation for future development.
+### coinbase-attestation (Active)
+Proves Coinbase KYC attestation using hybrid verification:
+- Off-chain: JavaScript `ecrecover` derives signer public key
+- On-chain: Noir verifies ECDSA signature via `std::ecdsa_secp256k1::verify_signature`
+- Includes nullifier generation for sybil resistance
 
-  * **`coinbase-kyc/`**: (Complete) An advanced circuit for generating ZK proofs of Coinbase on-chain KYC attestations. This circuit securely verifies the RLP-encoded EIP-1559 transaction, validates the Coinbase attester's signature using a high-performance hybrid (off-chain/on-chain) method, and confirms signer validity against a flexible Merkle root.
+### coinbase-country-attestation (Active)
+Proves Coinbase country attestation without revealing the country. Built on shared `coinbase-libs`.
 
-  * **`coinbase-attestation/`**: Refactored from `coinbase-kyc` for mobile app integration. Shared utilities extracted into `coinbase-libs` for maintainability. Proves Coinbase KYC attestation without revealing the user's identity.
+### coinbase-libs (Shared Library)
+Shared Noir library providing nullifier generation, RLP parser, Merkle proof verification, and Ethereum helpers.
 
-  * **`coinbase-country-attestation/`**: Built on the refactored `coinbase-libs` shared library. Proves Coinbase country attestation without revealing the country.
+### coinbase-kyc (Reference Only)
+Original circuit implementation. Kept as reference, not actively developed.
 
-  * **`coinbase-libs/`**: Shared Noir library (`type = "lib"`) extracted from common code. Provides RLP parser, Merkle proof verification, EIP-1559 transaction parser, and Ethereum helpers. Used by both `coinbase-attestation` and `coinbase-country-attestation`.
+## Public Inputs
 
-  * **`[Future Circuit Dirs]/`**: New circuits for various on-chain state proofs (e.g., Proof of NFT Ownership) or other off-chain data (e.g., Proof of GitHub Contribution) will be added here.
+All active circuits share these public inputs:
 
-## Building Circuits
+| Input | Description |
+|-------|-------------|
+| `signal_hash` | Anti-replay challenge from dApp |
+| `signer_list_merkle_root` | Merkle root of authorized Coinbase signers |
+| `scope` | Nullifier scope identifier |
+| `nullifier` | Sybil resistance identifier |
+
+## Nullifier Scheme
+
+```
+scope = keccak256(scope_string)
+user_secret = keccak256(user_address ++ signal_hash)
+nullifier = keccak256(user_secret ++ scope)
+```
+
+Same user + same scope = same nullifier (duplicate detected).
+
+## Building
 
 ```bash
-# Full build (compile + VK + witness + proof + verify + Solidity verifier)
+# Full build pipeline (compile + VK + Solidity verifier)
 ./scripts/build.sh coinbase-attestation
 ./scripts/build.sh coinbase-country-attestation
 ```
 
+Required tools (exact versions):
+- nargo 1.0.0-beta.8
+- bb v1.0.0-nightly.20250723
+
 ## Deploying Verifiers
 
-Deploy Solidity verifier contracts to EVM networks using Foundry.
+Prerequisites: `.env.development` or `.env.production` with `PRIVATE_KEY`, RPC URLs, `ETHERSCAN_API_KEY`.
 
-**Prerequisites**: `.env.development` or `.env.production` with `PRIVATE_KEY`, RPC URLs, API keys. Install Foundry dependencies with `forge install`.
+```bash
+# 1. Deploy shared library (once per network)
+./scripts/deploy_verifier.sh lib base-sepolia
 
-**Deployment order**:
-1. Deploy ZKTranscriptLib (shared on-chain library, once per network):
-   ```bash
-   ./scripts/deploy_verifier.sh lib base-sepolia
-   ```
-2. Deploy verifier contracts:
-   ```bash
-   ./scripts/deploy_verifier.sh coinbase-attestation base-sepolia
-   ./scripts/deploy_verifier.sh coinbase-country-attestation base-sepolia
-   ```
+# 2. Deploy verifier contracts
+./scripts/deploy_verifier.sh coinbase-attestation base-sepolia
+./scripts/deploy_verifier.sh coinbase-country-attestation base-sepolia
+```
 
-**Supported networks**: base-sepolia, sepolia, base, mainnet
+Supported networks: base-sepolia, sepolia, base, mainnet
 
-### Current Deployments (Base Sepolia - Chain 84532)
+## Current Deployments
+
+### Base Sepolia (Chain ID: 84532)
 
 | Contract | Address |
 |----------|---------|
 | ZKTranscriptLib | `0xD4A84AcCA4d9A94ec194a10226eC600fFF0939E7` |
-| CoinbaseAttestation HonkVerifier | `0x07121eb50b2Ebe1675E7Cb96c84B580A3fF6589e` |
-| CoinbaseCountryAttestation HonkVerifier | `0xaaC5F16CD40D8AF76508ae7dbD6A8FbE60f780B4` |
+| CoinbaseAttestation | `0xEb9eb5452790Cfe549fF83CEB3Dbe1C432231492` |
+| CoinbaseCountryAttestation | `0xD0F3eE648386B59B484157332E736388Fcc41F47` |
+| NullifierRegistry | `0x5Da234546874304F8c51BBEed00fC632938211c1` |
 
-## Security & Disclaimer
+### Base Mainnet (Chain ID: 8453)
 
-The circuits in this repository, including the completed `coinbase-kyc` circuit, are experimental and have not yet undergone a formal, independent security audit. They are provided as-is for research, testing, and community feedback.
+Not yet deployed.
 
-We strongly advise caution when integrating these circuits into systems where tangible assets are at stake. Bug reports and feature suggestions are always welcome via GitHub Issues. For security vulnerabilities, please contact us privately.
+## Smart Contracts
+
+### Verifier Contracts
+Generated Solidity contracts that verify UltraHonk proofs on-chain. Each circuit has its own verifier.
+
+### NullifierRegistry
+Multi-circuit nullifier registry that prevents duplicate proofs within the same scope. Deployed via `script/DeployNullifierRegistry.s.sol`.
+
+## Constants
+
+| Constant | Value |
+|----------|-------|
+| Coinbase Attester | `0x357458739F90461b99789350868CD7CF330Dd7EE` |
+| Function Selector | `0x56feed5e` (attestAccount) |
+
+## Security
+
+These circuits are experimental and have not undergone a formal security audit. Use with caution in production.
 
 ## License
 
-[MIT](https://www.google.com/search?q=LICENSE)
+MIT

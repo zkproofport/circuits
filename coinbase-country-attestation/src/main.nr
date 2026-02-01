@@ -44,6 +44,10 @@ fn main(
     country_list_length: pub u32,
     is_included: pub bool,
 
+    // Scope and nullifier for Sybil resistance
+    scope: pub [u8; 32],           // keccak256(scope_string)
+    nullifier: pub [u8; 32],       // keccak256(user_secret ++ scope)
+
     // ============ Private Inputs ============
     // (Provided by the User/Prover, kept hidden)
 
@@ -193,6 +197,12 @@ fn main(
         // Exclusion mode: country must NOT be in the list
         assert(!found, "Country is in exclusion list");
     }
+
+    // ===================================================================
+    // PART 4: Nullifier Verification (Sybil Resistance)
+    // "The nullifier is correctly derived from user_address, signal_hash, and scope."
+    // ===================================================================
+    coinbase_libs::nullifier::verify_nullifier(user_address, signal_hash, scope, nullifier);
 
     // ===================================================================
     // If all assertions pass, the proof is valid!
