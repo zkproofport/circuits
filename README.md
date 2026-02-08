@@ -2,7 +2,7 @@
 
 ## Overview
 
-Noir ZK circuits for the ProofPort protocol. Each circuit generates zero-knowledge proofs for specific on-chain attestations without revealing user identity.
+Noir ZK circuits for the Proofport protocol. Each circuit generates zero-knowledge proofs for specific on-chain attestations without revealing user identity.
 
 ## Available Circuits
 
@@ -78,7 +78,7 @@ Supported networks: base-sepolia, sepolia, base, mainnet
 | ZKTranscriptLib | `0xD4A84AcCA4d9A94ec194a10226eC600fFF0939E7` |
 | CoinbaseAttestation | `0xEb9eb5452790Cfe549fF83CEB3Dbe1C432231492` |
 | CoinbaseCountryAttestation | `0xD0F3eE648386B59B484157332E736388Fcc41F47` |
-| NullifierRegistry | `0x5Da234546874304F8c51BBEed00fC632938211c1` |
+| ZKProofportNullifierRegistry | `0xC6a8dC34B1872a883aFCc808C90c31c038764d9a` |
 
 ### Base Mainnet (Chain ID: 8453)
 
