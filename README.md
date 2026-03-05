@@ -78,19 +78,23 @@ Supported networks: base-sepolia, sepolia, base, mainnet
 | ZKTranscriptLib | `0xD4A84AcCA4d9A94ec194a10226eC600fFF0939E7` |
 | CoinbaseAttestation | `0xEb9eb5452790Cfe549fF83CEB3Dbe1C432231492` |
 | CoinbaseCountryAttestation | `0xD0F3eE648386B59B484157332E736388Fcc41F47` |
-| ZKProofportNullifierRegistry | `0xC6a8dC34B1872a883aFCc808C90c31c038764d9a` |
+| ~~ZKProofportNullifierRegistry~~ | ~~`0xC6a8dC34B1872a883aFCc808C90c31c038764d9a`~~ (DEPRECATED) |
 
 ### Base Mainnet (Chain ID: 8453)
 
-Not yet deployed.
+| Contract | Address |
+|----------|---------|
+| ZKTranscriptLib | `0x5A74865E3027FEeaE68cb1F07970442F2cbE00B1` |
+| CoinbaseAttestation | `0xF7dED73E7a7fc8fb030c35c5A88D40ABe6865382` |
+| CoinbaseCountryAttestation | `0xF3D5A09d2C85B28C52EF2905c1BE3a852b609D0C` |
 
 ## Smart Contracts
 
 ### Verifier Contracts
 Generated Solidity contracts that verify UltraHonk proofs on-chain. Each circuit has its own verifier.
 
-### NullifierRegistry
-Multi-circuit nullifier registry that prevents duplicate proofs within the same scope. Deployed via `script/DeployNullifierRegistry.s.sol`.
+### NullifierRegistry (DEPRECATED)
+Multi-circuit nullifier registry. **Deprecated** — nullifier management is handled off-chain. Source code kept for reference only.
 
 ## Constants
 
