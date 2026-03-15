@@ -1,0 +1,14 @@
+{
+  "name": "oidc-test-inputs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "npx tsx generate-test-inputs.ts"
+  },
+  "dependencies": {
+    "jose": "^5.0.0",
+    "ethers": "^6.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

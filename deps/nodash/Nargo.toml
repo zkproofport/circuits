@@ -1,0 +1,13 @@
+[package]
+name = "nodash"
+type = "lib"
+description = "A Swiss knife for Noir"
+authors = ["Oleh Misarosh <olehmisar@gmail.com>"]
+repository = "https://github.com/olehmisar/nodash"
+keywords = ["Noir", "nodash", "util", "hash"]
+
+
+[dependencies]
+sha256 = { path = "../sha256" }
+keccak256 = { tag = "v0.1.1", git = "https://github.com/noir-lang/keccak256" }
+poseidon = { tag = "v0.1.1", git = "https://github.com/noir-lang/poseidon" }

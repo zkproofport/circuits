@@ -18,6 +18,7 @@ usage() {
     echo "  lib                    Deploy ZKTranscriptLib (once per network)"
     echo "  coinbase-attestation   Deploy CoinbaseAttestation verifier"
     echo "  coinbase-country-attestation   Deploy CoinbaseCountryAttestation verifier"
+  echo "  oidc-domain-attestation        Deploy OidcDomainAttestation verifier"
     echo ""
     echo "Networks: base-sepolia, sepolia, base, mainnet"
     echo ""
@@ -188,6 +189,11 @@ case $COMMAND in
         SOL_FILE="coinbase-country-attestation/target/CoinbaseCountryAttestation.sol"
         SCRIPT_FILE="script/DeployCoinbaseCountryAttestation.s.sol"
         DISPLAY_NAME="CoinbaseCountryAttestation"
+        ;;
+    oidc-domain-attestation)
+        SOL_FILE="oidc-domain-attestation/target/OidcDomainAttestation.sol"
+        SCRIPT_FILE="script/DeployOidcDomainAttestation.s.sol"
+        DISPLAY_NAME="OidcDomainAttestation"
         ;;
     *)
         echo -e "${RED}Error: Unknown command '$COMMAND'${NC}"
