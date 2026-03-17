@@ -6,4 +6,4 @@ authors = ["zkproofport"]
 
 [dependencies]
 jwt = { path = "../deps/noir-jwt" }
-keccak256 = { tag = "v0.1.1", git = "https://github.com/noir-lang/keccak256" }
+keccak256 = { path = "../deps/keccak256" }
