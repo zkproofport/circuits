@@ -1,9 +1,13 @@
 use dep::jwt::JWT;
 use dep::keccak256::keccak256;
 
-global MAX_PARTIAL_DATA_LENGTH: u32 = 640;
+global MAX_PARTIAL_DATA_LENGTH: u32 = 768;
 global MAX_DOMAIN_LENGTH: u32 = 64;
 global MAX_EMAIL_LENGTH: u32 = 128;
+
+// Provider constants
+global PROVIDER_GOOGLE: u8 = 0;
+global PROVIDER_MICROSOFT: u8 = 1;
 
 fn main(
     // ============ Public Inputs ============
@@ -18,6 +22,9 @@ fn main(
     scope: pub [u8; 32],
     nullifier: pub [u8; 32],
 
+    // OIDC provider (0 = Google, 1 = Microsoft)
+    provider: pub u8,
+
     // ============ Private Inputs ============
 
     // JWT data (Partial SHA)
@@ -30,6 +37,12 @@ fn main(
     redc_params_limbs: [u128; 18],
     signature_limbs: [u128; 18],
 ) {
+    // Validate provider
+    assert(
+        (provider == PROVIDER_GOOGLE) | (provider == PROVIDER_MICROSOFT),
+        "unsupported provider: must be 0 (Google) or 1 (Microsoft)",
+    );
+
     // ========================================
     // PART 1: JWT RSA Signature Verification
     // ========================================
@@ -47,7 +60,12 @@ fn main(
     // ========================================
     // PART 2: Email Verification + Domain Extraction
     // ========================================
-    jwt.assert_claim_bool("email_verified".as_bytes(), true);
+    // Google: email_verified claim, Microsoft: xms_edov claim
+    if provider == PROVIDER_MICROSOFT {
+        jwt.assert_claim_bool("xms_edov".as_bytes(), true);
+    } else {
+        jwt.assert_claim_bool("email_verified".as_bytes(), true);
+    }
 
     let email: BoundedVec<u8, MAX_EMAIL_LENGTH> =
         jwt.get_claim_string("email".as_bytes());
