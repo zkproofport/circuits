@@ -15,6 +15,14 @@ Proves Coinbase KYC attestation using hybrid verification:
 ### coinbase-country-attestation (Active)
 Proves Coinbase country attestation without revealing the country. Built on shared `coinbase-libs`.
 
+### oidc-domain-attestation (Active)
+Proves email domain affiliation via OIDC JWT (Google, Microsoft) without revealing the full email address.
+- RSA-2048 signature verification of JWT
+- Domain extraction from email claim
+- Nullifier generation from email + scope (Sybil-resistant)
+- Provider support: Google (email_verified), Microsoft 365 (xms_edov)
+- 148 public inputs: pubkey_modulus_limbs[18] + domain BoundedVec<u8,64> + scope[32] + nullifier[32] + provider[1]
+
 ### coinbase-libs (Shared Library)
 Shared Noir library providing nullifier generation, RLP parser, Merkle proof verification, and Ethereum helpers.
 
@@ -23,7 +31,9 @@ Original circuit implementation. Kept as reference, not actively developed.
 
 ## Public Inputs
 
-All active circuits share these public inputs:
+### Coinbase Circuits
+
+Coinbase attestation circuits share these public inputs:
 
 | Input | Description |
 |-------|-------------|
@@ -31,6 +41,18 @@ All active circuits share these public inputs:
 | `signer_list_merkle_root` | Merkle root of authorized Coinbase signers |
 | `scope` | Nullifier scope identifier |
 | `nullifier` | Sybil resistance identifier |
+
+### OIDC Domain Attestation Circuit
+
+The OIDC circuit has a distinct layout with 148 public inputs:
+
+| Input | Count | Description |
+|-------|-------|-------------|
+| `pubkey_modulus_limbs` | 18 | RSA-2048 public key modulus (18 x 120-bit limbs) |
+| `domain` | 65 | BoundedVec\<u8,64\>: length prefix + domain bytes |
+| `scope` | 32 | Nullifier scope identifier (32 bytes) |
+| `nullifier` | 32 | Sybil resistance identifier (32 bytes) |
+| `provider` | 1 | OIDC provider (0 = Google, 1 = Microsoft) |
 
 ## Nullifier Scheme
 
