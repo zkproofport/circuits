@@ -70,6 +70,7 @@ Same user + same scope = same nullifier (duplicate detected).
 # Full build pipeline (compile + VK + Solidity verifier)
 ./scripts/build.sh coinbase-attestation
 ./scripts/build.sh coinbase-country-attestation
+./scripts/build.sh oidc-domain-attestation
 ```
 
 Required tools (exact versions):
@@ -87,7 +88,10 @@ Prerequisites: `.env.development` or `.env.production` with `PRIVATE_KEY`, RPC U
 # 2. Deploy verifier contracts
 ./scripts/deploy_verifier.sh coinbase-attestation base-sepolia
 ./scripts/deploy_verifier.sh coinbase-country-attestation base-sepolia
+./scripts/deploy_verifier.sh oidc-domain-attestation base-sepolia
 ```
+
+> **Note:** OIDC domain attestation verification is currently off-chain only (via `bb verify` in the AI server). On-chain verifier contract exists but is not yet deployed.
 
 Supported networks: base-sepolia, sepolia, base, mainnet
 
