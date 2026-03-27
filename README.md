@@ -91,7 +91,7 @@ Prerequisites: `.env.development` or `.env.production` with `PRIVATE_KEY`, RPC U
 ./scripts/deploy_verifier.sh oidc-domain-attestation base-sepolia
 ```
 
-> **Note:** OIDC domain attestation verification is currently off-chain only (via `bb verify` in the AI server). On-chain verifier contract exists but is not yet deployed.
+> **Note:** OIDC domain attestation is verified both on-chain (via deployed verifier contracts) and off-chain (via `bb verify` in the AI server).
 
 Supported networks: base-sepolia, sepolia, base, mainnet
 
@@ -104,6 +104,7 @@ Supported networks: base-sepolia, sepolia, base, mainnet
 | ZKTranscriptLib | `0xD4A84AcCA4d9A94ec194a10226eC600fFF0939E7` |
 | CoinbaseAttestation | `0xEb9eb5452790Cfe549fF83CEB3Dbe1C432231492` |
 | CoinbaseCountryAttestation | `0xD0F3eE648386B59B484157332E736388Fcc41F47` |
+| OidcDomainAttestation | `0x27afdea349f247cf698f97fdfab59e1bf8bd0550` |
 | ~~ZKProofportNullifierRegistry~~ | ~~`0xC6a8dC34B1872a883aFCc808C90c31c038764d9a`~~ (DEPRECATED) |
 
 ### Base Mainnet (Chain ID: 8453)
@@ -113,6 +114,7 @@ Supported networks: base-sepolia, sepolia, base, mainnet
 | ZKTranscriptLib | `0x5A74865E3027FEeaE68cb1F07970442F2cbE00B1` |
 | CoinbaseAttestation | `0xF7dED73E7a7fc8fb030c35c5A88D40ABe6865382` |
 | CoinbaseCountryAttestation | `0xF3D5A09d2C85B28C52EF2905c1BE3a852b609D0C` |
+| OidcDomainAttestation | `0x9677ba46ad226ce8b3c4517d9c0143e4d458beae` |
 
 ## Smart Contracts
 
