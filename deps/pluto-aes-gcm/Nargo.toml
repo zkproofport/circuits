@@ -1,0 +1,7 @@
+[package]
+name = "pluto_aes_gcm"
+type = "lib"
+authors = [""]
+compiler_version = ">=0.33.0"
+
+[dependencies]

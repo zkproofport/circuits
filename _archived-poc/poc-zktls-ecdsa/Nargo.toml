@@ -1,0 +1,11 @@
+[package]
+name = "poc_zktls_ecdsa"
+type = "bin"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+noir_ecdsa = { path = "../deps/zkp-ecdsa" }
+bigcurve = { path = "../deps/zkp-bigcurve" }
+bignum = { path = "../deps/zkp-bignum" }
+sha256 = { path = "../deps/sha256" }

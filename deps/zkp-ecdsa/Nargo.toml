@@ -1,0 +1,10 @@
+[package]
+name = "curves"
+type = "lib"
+authors = [""]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+bignum = { path = "../zkp-bignum" }
+bigcurve = { path = "../zkp-bigcurve" }
+sha256 = { path = "../sha256" }

@@ -1,0 +1,9 @@
+[package]
+name = "poc_zktls_generic_matcher"
+type = "bin"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+keccak256 = { path = "../deps/keccak256" }
+poseidon = { path = "../deps/poseidon" }

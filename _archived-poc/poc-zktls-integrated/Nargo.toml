@@ -1,0 +1,10 @@
+[package]
+name = "poc_zktls_integrated"
+type = "bin"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+pluto_aes_gcm = { path = "../deps/pluto-aes-gcm" }
+keccak256 = { path = "../deps/keccak256" }
+poseidon = { path = "../deps/poseidon" }

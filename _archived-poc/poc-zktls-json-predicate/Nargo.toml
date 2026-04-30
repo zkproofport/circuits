@@ -1,0 +1,8 @@
+[package]
+name = "poc_zktls_json_predicate"
+type = "bin"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+keccak256 = { path = "../deps/keccak256" }

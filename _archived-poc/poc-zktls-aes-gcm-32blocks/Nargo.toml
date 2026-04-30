@@ -1,0 +1,8 @@
+[package]
+name = "poc_zktls_aes_gcm_32blocks"
+type = "bin"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+pluto_aes_gcm = { path = "../deps/pluto-aes-gcm" }
