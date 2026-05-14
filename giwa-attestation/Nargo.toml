@@ -1,0 +1,9 @@
+[package]
+name = "giwa_attestation"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+keccak256 = { path = "../deps/keccak256" }
+coinbase_libs = { path = "../coinbase-libs" }

@@ -40,7 +40,7 @@ NETWORK=$2
 cd "$CIRCUITS_DIR"
 
 case $NETWORK in
-    base-sepolia|sepolia)
+    base-sepolia|sepolia|giwa-sepolia)
         ENV_FILE=".env.development"
         ;;
     base|mainnet)
@@ -93,6 +93,14 @@ case $NETWORK in
         CHAIN_ID=1
         EXPLORER="https://etherscan.io"
         VERIFY_API_KEY="$ETHERSCAN_API_KEY"
+        VERIFY_URL=""
+        ;;
+    giwa-sepolia)
+        RPC_URL="$GIWA_SEPOLIA_RPC_URL"
+        CHAIN_ID=91342
+        EXPLORER="$GIWA_SEPOLIA_EXPLORER_URL"
+        # GIWA explorer is Blockscout — no Etherscan-style verification yet
+        VERIFY_API_KEY=""
         VERIFY_URL=""
         ;;
 esac
@@ -151,7 +159,7 @@ if [ "$COMMAND" == "lib" ]; then
 
     echo "$OUTPUT"
 
-    DEPLOYED_ADDR=$(echo "$OUTPUT" | grep -oP 'Deployed to: \K0x[0-9a-fA-F]+')
+    DEPLOYED_ADDR=$(echo "$OUTPUT" | awk '/Deployed to:/ {print $3; exit}')
     if [ -z "$DEPLOYED_ADDR" ]; then
         echo -e "${RED}Error: Failed to parse deployed address${NC}"
         exit 1
@@ -194,6 +202,11 @@ case $COMMAND in
         SOL_FILE="oidc-domain-attestation/target/OidcDomainAttestation.sol"
         SCRIPT_FILE="script/DeployOidcDomainAttestation.s.sol"
         DISPLAY_NAME="OidcDomainAttestation"
+        ;;
+    giwa-attestation)
+        SOL_FILE="giwa-attestation/target/GiwaAttestation.sol"
+        SCRIPT_FILE="script/DeployGiwaAttestation.s.sol"
+        DISPLAY_NAME="GiwaAttestation"
         ;;
     *)
         echo -e "${RED}Error: Unknown command '$COMMAND'${NC}"
