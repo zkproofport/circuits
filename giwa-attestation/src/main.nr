@@ -2,7 +2,7 @@
 //
 // Forked from coinbase_attestation. Same logic; only the target attester
 // contract address changes from Coinbase StaticAttester on Base Mainnet
-// to MockCoinbaseAttester on GIWA Sepolia (chain ID 91342).
+// to MockGiwaAttester on GIWA Sepolia (chain ID 91342).
 //
 // The Mock contract on GIWA exposes the identical `attestAccount(address)`
 // selector (0x56feed5e) and wraps GIWA's EAS predeploy, so the EIP-1559
@@ -17,7 +17,7 @@ use dep::coinbase_libs::ethereum::{
     create_eth_signed_message_hash,
 };
 
-/// MockCoinbaseAttester address on GIWA Sepolia (the 'to' address of the attest tx).
+/// MockGiwaAttester address on GIWA Sepolia (the 'to' address of the attest tx).
 /// 0x6646d970499BBeD728636823A5A7e551E811b414
 global GIWA_ATTESTER_CONTRACT: [u8; 20] = [
     0x66, 0x46, 0xd9, 0x70, 0x49, 0x9B, 0xBe, 0xD7,

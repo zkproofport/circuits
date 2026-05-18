@@ -19,11 +19,12 @@ interface IEAS {
     function attest(AttestationRequest calldata request) external payable returns (bytes32);
 }
 
-/// @title MockCoinbaseAttester (GIWA PoC)
-/// @notice Mimics Coinbase StaticAttester.attestAccount(address) for GIWA Sepolia.
-///         Function selector 0x56feed5e MUST match the Noir circuit's ATTEST_ACCOUNT_SELECTOR.
+/// @title MockGiwaAttester (GIWA KYC PoC)
+/// @notice GIWA-side stand-in for Coinbase's StaticAttester.attestAccount(address).
+///         Mirrors the Coinbase function selector 0x56feed5e so the same Noir
+///         circuit can verify either attester (ATTEST_ACCOUNT_SELECTOR).
 ///         Internally wraps GIWA's EAS predeploy to register a 'bool verifiedAccount' attestation.
-contract MockCoinbaseAttester {
+contract MockGiwaAttester {
     IEAS private constant _EAS = IEAS(0x4200000000000000000000000000000000000021);
 
     bytes32 public immutable verifiedAccountSchema;
