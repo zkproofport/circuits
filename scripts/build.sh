@@ -46,6 +46,15 @@ echo ""
 rm -rf ./target/proof ./target/vk
 rm -f ./target/*.json ./target/*.sol
 
+# Detect whether this circuit ships a post-build hook (e.g. acceptance
+# tests). If so, the hook OWNS all witness/prove/verify steps — the
+# generic Prover.toml flow below is skipped to avoid double-running them
+# against a stale single fixture.
+HAS_POST_BUILD_HOOK=false
+if [ -z "${SKIP_POST_BUILD:-}" ] && [ -f "$CIRCUIT_DIR/scripts/post-build.sh" ]; then
+    HAS_POST_BUILD_HOOK=true
+fi
+
 # 1. Compile Noir circuit
 echo "1. Compiling Noir circuit..."
 nargo compile
@@ -72,8 +81,8 @@ bb write_vk \
 echo "VK generation complete"
 echo ""
 
-# 3. Generate Witness (only if Prover.toml exists)
-if [ -f "./Prover.toml" ]; then
+# 3. Generate Witness (only if Prover.toml exists AND no hook owns testing)
+if [ "$HAS_POST_BUILD_HOOK" = false ] && [ -f "./Prover.toml" ]; then
     echo "3. Generating Witness..."
     nargo execute witness
     mkdir -p ./target/proof
@@ -110,7 +119,11 @@ if [ -f "./Prover.toml" ]; then
     echo "Verification successful!"
     echo ""
 else
-    echo "3-6. Skipping witness/proof generation (no Prover.toml)"
+    if [ "$HAS_POST_BUILD_HOOK" = true ]; then
+        echo "3-6. Skipping witness/proof generation (post-build hook owns it)"
+    else
+        echo "3-6. Skipping witness/proof generation (no Prover.toml)"
+    fi
     echo ""
     PROOF_SIZE="N/A"
 fi
@@ -144,3 +157,27 @@ fi
 echo ""
 echo "bb CLI version: $BB_VERSION"
 echo "Oracle Hash: Keccak (EVM-optimized)"
+
+# ---------------------------------------------------------------------------
+# Per-circuit post-build hook
+#
+# A circuit can ship a `scripts/post-build.sh` to run extra acceptance
+# tests (e.g. edge-case proofs). The hook runs after the standard build
+# pipeline; if it exits non-zero, the build itself is considered FAILED.
+#
+# To prevent infinite recursion when the hook re-invokes this script,
+# SKIP_POST_BUILD=1 is propagated automatically.
+# ---------------------------------------------------------------------------
+if [ -z "${SKIP_POST_BUILD:-}" ] && [ -f "$CIRCUIT_DIR/scripts/post-build.sh" ]; then
+    echo ""
+    echo "=================================================="
+    echo "Running post-build hook: scripts/post-build.sh"
+    echo "=================================================="
+    if ! SKIP_POST_BUILD=1 bash "$CIRCUIT_DIR/scripts/post-build.sh"; then
+        echo ""
+        echo "=================================================="
+        echo "BUILD FAILED — post-build hook reported errors"
+        echo "=================================================="
+        exit 1
+    fi
+fi

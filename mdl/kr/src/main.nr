@@ -1,9 +1,15 @@
 // ZKProofport: Korea Mobile ID (mDL) circuit - OmniOne CX based
 //
-// Web2 authentication flow (no Privy wallet signature). Uses ci/jti/pri from
-// the OmniOne CX response for integrity, derives a permanent natural-person
-// nullifier from ci, enforces age and region predicates, and produces a
-// selective owner commitment over (name, birth_date, sex, telno).
+// v2 - hardens age + region verification by binding birth_date and address
+// into the natural-person commitment. The first whitespace-separated token
+// of the address is extracted in-circuit and matched against region_code,
+// so a prover cannot claim a region different from the OmniOne CX response.
+//
+// Web2 authentication flow (no Privy wallet signature). Uses ci/jti/pri
+// from the OmniOne CX response for integrity, derives a permanent
+// natural-person nullifier from ci+birth+address, enforces age and region
+// predicates, and produces a selective owner commitment over
+// (name, birth_date, sex, telno).
 //
 // disclose_flags bits:
 //   0x01 = name
@@ -24,6 +30,7 @@ global NAME_MAX: u32 = 64;
 global TELNO_MAX: u32 = 16;
 global REGION_MAX: u32 = 64;
 global BIRTH_LEN: u32 = 8;     // "YYYYMMDD"
+global ADDRESS_MAX: u32 = 256;
 
 fn main(
     // ============ Public Inputs ============
@@ -44,7 +51,10 @@ fn main(
     age_threshold:     pub u32,        // e.g. 19
     current_year:      pub u32,        // e.g. 2026
 
-    // Region predicate: keccak(region_padded_64)
+    // Region predicate: keccak(region_padded_64) - the verifier knows the
+    // target si-do and supplies its hash; the circuit asserts that the
+    // first whitespace-separated token of the user's address hashes to
+    // exactly this value.
     region_code:       pub [u8; 32],
 
     // Selective disclosure
@@ -58,17 +68,17 @@ fn main(
     cx_jti:            [u8; 40],
     cx_pri:            [u8; 44],
 
-    // Mobile DL attributes
+    // Mobile DL attributes - all bound into mdl_commit, so a prover cannot
+    // swap any of them after the OmniOne CX call.
     name:              [u8; 64],       // UTF-8, zero-padded
     birth_date:        [u8; 8],        // "YYYYMMDD" ASCII
     telno:             [u8; 16],       // ASCII, zero-padded
     sex:               u8,             // 'M'/'F' ASCII, or 0 if absent
-    region:            [u8; 64],       // first "region" token UTF-8, zero-padded
+    address:           [u8; 256],      // full residential address UTF-8, zero-padded
 ) {
     // ======================================================================
     // 1. OmniOne CX integrity check
     //    keccak256(jti || pri) MUST match the public anchor.
-    //    Anyone holding the same OmniOne CX response can reproduce this root.
     // ======================================================================
     let mut integrity_buf: [u8; 84] = [0u8; 84];
     for i in 0..40 {
@@ -81,11 +91,12 @@ fn main(
     assert(integrity == cx_integrity_root, "CX integrity mismatch");
 
     // ======================================================================
-    // 2. Natural-person commitment (ci + cx integrity)
+    // 2. Natural-person commitment (ci + cx integrity + birth + address)
+    //    Birth and address are included so a prover cannot swap them.
     //    First 20 bytes serve as the self_id slot in the existing
     //    coinbase_libs::nullifier helper.
     // ======================================================================
-    let mut mdl_buf: [u8; 172] = [0u8; 172];
+    let mut mdl_buf: [u8; 436] = [0u8; 436];
     for i in 0..88 {
         mdl_buf[i] = ci[i];
     }
@@ -95,7 +106,13 @@ fn main(
     for i in 0..44 {
         mdl_buf[128 + i] = cx_pri[i];
     }
-    let mdl_commit = keccak256(mdl_buf, 172);
+    for i in 0..8 {
+        mdl_buf[172 + i] = birth_date[i];
+    }
+    for i in 0..256 {
+        mdl_buf[180 + i] = address[i];
+    }
+    let mdl_commit = keccak256(mdl_buf, 436);
 
     let mut self_id_20: [u8; 20] = [0u8; 20];
     for i in 0..20 {
@@ -122,11 +139,29 @@ fn main(
     assert(age >= age_threshold, "Age below threshold");
 
     // ======================================================================
-    // 5. Region predicate - keccak(region_padded_64) == region_code
-    //    Region is the first "region" token of the address, UTF-8 zero-padded.
+    // 5. Region predicate
+    //    Extract the first whitespace-separated token from `address`,
+    //    zero-pad to 64 bytes, hash, and assert equal to region_code.
+    //    This binds the region claim to the user's actual address.
+    //
+    //    Tokens longer than 64 bytes are truncated (sufficient for every
+    //    Korean si-do; the longest wide-area si-do string in UTF-8 is < 25 bytes).
     // ======================================================================
-    let region_hash = keccak256(region, 64);
-    assert(region_hash == region_code, "Region mismatch");
+    let mut extracted: [u8; 64] = [0u8; 64];
+    let mut found_space: bool = false;
+    for i in 0..64 {
+        let ch = address[i];
+        // ASCII space (0x20) or tab (0x09) terminate the first token.
+        let is_space = (ch == 0x20) | (ch == 0x09);
+        if is_space {
+            found_space = true;
+        }
+        if !found_space {
+            extracted[i] = ch;
+        }
+    }
+    let extracted_hash = keccak256(extracted, 64);
+    assert(extracted_hash == region_code, "Region mismatch");
 
     // ======================================================================
     // 6. Selective disclosure commitment

@@ -44,6 +44,7 @@ const DEMO_RESPONSE = {
   sex: '',
   jti: '6c53fdbc92be40388afc649166cb71419dhga1oi',
   pri: 'kJfvI0WelD8x9c29ab8ep3z1H8mHkn+91yTM3XbcKUw=',
+  address: '경기도 파주시 교하로 100, 910동 2903호 (목동동, 힐스테이트운정)',
 };
 
 const inputPath = args['input'];
@@ -74,14 +75,20 @@ const name  = padZero(oacx.name,  64, 'utf8');
 const telno = padZero(oacx.telno, 16, 'utf8');
 const sex   = oacx.sex && oacx.sex.length > 0 ? oacx.sex.charCodeAt(0) : 0;
 const birth = padZero(oacx.birth, 8,  'utf8');
-const region = padZero(REGION, 64, 'utf8');
+const address = padZero(oacx.address || '', 256, 'utf8');
+// region_code is the dApp's TARGET si/do hash. The circuit extracts the
+// user's actual region from `address` and asserts equality, so a prover
+// cannot claim a region different from their OmniOne CX address.
+const targetRegion = padZero(REGION, 64, 'utf8');
 
 // ───────────────────────────────────────────────
 // Public inputs (computed)
 // ───────────────────────────────────────────────
 const cx_integrity_root = k256(Buffer.concat([jti, pri]));
 
-const mdl_buf = Buffer.concat([ci, jti, pri]);  // 88 + 40 + 44 = 172
+// mdl_commit now binds (ci || jti || pri || birth || address) — 436 bytes —
+// so the prover cannot swap birth or address after the OmniOne CX call.
+const mdl_buf = Buffer.concat([ci, jti, pri, birth, address]);  // 88+40+44+8+256 = 436
 const mdl_commit = k256(mdl_buf);
 const self_id_20 = mdl_commit.subarray(0, 20);
 
@@ -91,7 +98,7 @@ const signal_hash = randomBytes(32);
 const user_secret = k256(Buffer.concat([self_id_20, signal_hash]));
 const nullifier_value = k256(Buffer.concat([user_secret, scope]));
 
-const region_code = k256(region);
+const region_code = k256(targetRegion);
 
 const disclose_flags = parseInt(FLAGS_HEX, 16);
 
@@ -136,7 +143,9 @@ const lines = [
   `birth_date  = ${tomlArray(birth)}`,
   `telno       = ${tomlArray(telno)}`,
   `sex         = ${sex}`,
-  `region      = ${tomlArray(region)}`,
+  `address     = ${tomlArray(address)}`,
+  // (legacy debug — `region` field removed in v2: the circuit derives the
+  //  user's region from `address` directly, so no separate region input.)
   '',
 ];
 

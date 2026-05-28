@@ -29,3 +29,6 @@ cache/
 
 # Foundry dependencies (restore with: forge install)
 lib/
+
+# mDL test fixtures (contain personal info — do NOT commit)
+mdl/kr/test-vectors/
