@@ -1,0 +1,9 @@
+{
+  "name": "mdl-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "js-sha3": "^0.9.3"
+  }
+}

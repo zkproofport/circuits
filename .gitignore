@@ -31,4 +31,6 @@ cache/
 lib/
 
 # mDL test fixtures (contain personal info — do NOT commit)
-mdl/kr/test-vectors/
+mdl/kr-ownership/test-vectors/
+mdl/kr-age/test-vectors/
+mdl/kr-region/test-vectors/

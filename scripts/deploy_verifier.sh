@@ -20,7 +20,9 @@ usage() {
     echo "  coinbase-country-attestation   Deploy CoinbaseCountryAttestation verifier"
     echo "  oidc-domain-attestation        Deploy OidcDomainAttestation verifier"
     echo "  giwa-attestation               Deploy GiwaAttestation verifier"
-    echo "  mdl-kr                         Deploy MdlKr (Korea Mobile ID) verifier"
+    echo "  mdl-kr-ownership               Deploy MdlKrOwnership (Korea Mobile ID — ownership)"
+    echo "  mdl-kr-age                     Deploy MdlKrAge (Korea Mobile ID — age predicate)"
+    echo "  mdl-kr-region                  Deploy MdlKrRegion (Korea Mobile ID — region predicate)"
     echo ""
     echo "Networks: base-sepolia, sepolia, base, mainnet"
     echo ""
@@ -210,10 +212,20 @@ case $COMMAND in
         SCRIPT_FILE="script/DeployGiwaAttestation.s.sol"
         DISPLAY_NAME="GiwaAttestation"
         ;;
-    mdl-kr)
-        SOL_FILE="mdl/kr/target/MdlKr.sol"
-        SCRIPT_FILE="script/DeployMdlKr.s.sol"
-        DISPLAY_NAME="MdlKr"
+    mdl-kr-ownership)
+        SOL_FILE="mdl/kr-ownership/target/MdlKrOwnership.sol"
+        SCRIPT_FILE="script/DeployMdlKrOwnership.s.sol"
+        DISPLAY_NAME="MdlKrOwnership"
+        ;;
+    mdl-kr-age)
+        SOL_FILE="mdl/kr-age/target/MdlKrAge.sol"
+        SCRIPT_FILE="script/DeployMdlKrAge.s.sol"
+        DISPLAY_NAME="MdlKrAge"
+        ;;
+    mdl-kr-region)
+        SOL_FILE="mdl/kr-region/target/MdlKrRegion.sol"
+        SCRIPT_FILE="script/DeployMdlKrRegion.s.sol"
+        DISPLAY_NAME="MdlKrRegion"
         ;;
     *)
         echo -e "${RED}Error: Unknown command '$COMMAND'${NC}"
