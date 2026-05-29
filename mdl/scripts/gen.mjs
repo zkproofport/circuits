@@ -90,6 +90,10 @@ const ADDRESS_OVERRIDE      = typeof args['address-override'] === 'string'
 const SIGNAL_HASH_OVERRIDE  = typeof args['signal-hash-hex'] === 'string'
   ? args['signal-hash-hex']
   : null;
+const EXPECTED_NAME_OVERRIDE  = typeof args['expected-name']  === 'string' ? args['expected-name']  : null;
+const EXPECTED_BIRTH_OVERRIDE = typeof args['expected-birth'] === 'string' ? args['expected-birth'] : null;
+const EXPECTED_SEX_OVERRIDE   = typeof args['expected-sex']   === 'string' ? args['expected-sex']   : null;
+const EXPECTED_TELNO_OVERRIDE = typeof args['expected-telno'] === 'string' ? args['expected-telno'] : null;
 
 const DEMO_RESPONSE = {
   ci: '258NYBwTVSUV7ph8dL55wJXVkalUCp1xiVqm5pIxVEY1wiq2/4uCH0QjI2rQKSXG1wQ9q/Z0+s5NlQHzJva+iQ==',
@@ -134,6 +138,21 @@ const birth   = padZero(oacx.birth, 8,  'utf8');
 const address = padZero(oacx.address || '', 256, 'utf8');
 const targetRegion = padZero(REGION, 64, 'utf8');
 
+// Expected-value tuple for the ownership circuit. Defaults to the mDL
+// values themselves so honest PASS fixtures don't need explicit
+// overrides. Negative-test fixtures override one or more to a
+// different value and expect the circuit to reject.
+const expectedNameStr  = EXPECTED_NAME_OVERRIDE  ?? oacx.name;
+const expectedBirthStr = EXPECTED_BIRTH_OVERRIDE ?? oacx.birth;
+const expectedSexStr   = EXPECTED_SEX_OVERRIDE   ?? (oacx.sex ?? '');
+const expectedTelnoStr = EXPECTED_TELNO_OVERRIDE ?? oacx.telno;
+const expected_name  = padZero(expectedNameStr,  64, 'utf8');
+const expected_birth = padZero(expectedBirthStr, 8,  'utf8');
+const expected_telno = padZero(expectedTelnoStr, 16, 'utf8');
+const expected_sex   = expectedSexStr && expectedSexStr.length > 0
+  ? expectedSexStr.charCodeAt(0)
+  : 0;
+
 // ───────────────────────────────────────────────
 // Derivation (honest)
 // ───────────────────────────────────────────────
@@ -165,11 +184,15 @@ if (CORRUPT_SCOPE)       scope       = randomBytes(32);
 const region_code = k256(targetRegion);
 
 const disclose_flags = parseInt(FLAGS_HEX, 16);
+// owner_commit is derived from the EXPECTED values masked by the flag
+// bits. The mDL values themselves are not in the hash; the circuit
+// instead asserts (when the flag is set) that mDL.X == expected.X
+// byte-for-byte, so the two are forced equal anyway.
 const owner_buf = Buffer.alloc(89);
-if (disclose_flags & 0x01) name.copy(owner_buf, 0);
-if (disclose_flags & 0x02) birth.copy(owner_buf, 64);
-if (disclose_flags & 0x04) owner_buf[72] = sex;
-if (disclose_flags & 0x08) telno.copy(owner_buf, 73);
+if (disclose_flags & 0x01) expected_name.copy(owner_buf, 0);
+if (disclose_flags & 0x02) expected_birth.copy(owner_buf, 64);
+if (disclose_flags & 0x04) owner_buf[72] = expected_sex;
+if (disclose_flags & 0x08) expected_telno.copy(owner_buf, 73);
 
 let owner_commit;
 if (disclose_flags === 0) {
@@ -231,11 +254,15 @@ lines.push(`cx_jti      = ${tomlArray(jti)}`);
 lines.push(`cx_pri      = ${tomlArray(pri)}`);
 
 if (CIRCUIT === 'ownership') {
-  lines.push(`name        = ${tomlArray(name)}`);
-  lines.push(`birth_date  = ${tomlArray(outBirth)}`);
-  lines.push(`telno       = ${tomlArray(telno)}`);
-  lines.push(`sex         = ${sex}`);
-  lines.push(`address     = ${tomlArray(outAddress)}`);
+  lines.push(`name           = ${tomlArray(name)}`);
+  lines.push(`birth_date     = ${tomlArray(outBirth)}`);
+  lines.push(`telno          = ${tomlArray(telno)}`);
+  lines.push(`sex            = ${sex}`);
+  lines.push(`address        = ${tomlArray(outAddress)}`);
+  lines.push(`expected_name  = ${tomlArray(expected_name)}`);
+  lines.push(`expected_birth = ${tomlArray(expected_birth)}`);
+  lines.push(`expected_telno = ${tomlArray(expected_telno)}`);
+  lines.push(`expected_sex   = ${expected_sex}`);
 } else {
   // age + region share the same minimal private set
   lines.push(`birth_date  = ${tomlArray(outBirth)}`);

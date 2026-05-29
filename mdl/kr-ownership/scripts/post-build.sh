@@ -97,6 +97,21 @@ run_case "B_corrupt_signal_hash"  FAIL --flags 0x0F --corrupt-signal-hash
 run_case "B_corrupt_scope"        FAIL --flags 0x0F --corrupt-scope
 
 # ─────────────────────────────────────────────────────────────────────────
+# Group C — expected-value matching (the new ownership predicate).
+# For each flag bit, supplying an expected value that differs from the
+# mDL value MUST fail; supplying the correct expected value PASSes.
+# Flags whose bit is NOT set must allow any expected value (no check).
+# ─────────────────────────────────────────────────────────────────────────
+echo ""
+echo "  Group C — expected-value matching"
+run_case "C_wrong_name_flag_set"     FAIL --flags 0x01 --expected-name "다른사람"
+run_case "C_wrong_birth_flag_set"    FAIL --flags 0x02 --expected-birth "20000101"
+run_case "C_wrong_sex_flag_set"      FAIL --flags 0x04 --expected-sex "X"
+run_case "C_wrong_telno_flag_set"    FAIL --flags 0x08 --expected-telno "01099999999"
+run_case "C_wrong_name_but_flag_off" PASS --flags 0x02 --expected-name "다른사람"
+run_case "C_all_match_flags_full"    PASS --flags 0x0F
+
+# ─────────────────────────────────────────────────────────────────────────
 # Restore the canonical (flags=0x0F) Prover.toml and rebuild so the
 # expected-fail cases above don't leave target/*.sol deleted.
 # ─────────────────────────────────────────────────────────────────────────

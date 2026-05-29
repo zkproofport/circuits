@@ -123,38 +123,76 @@ pub fn extract_region_token(address: [u8; 256]) -> [u8; 64] {
     extracted
 }
 
-// Selective disclosure commitment.
+// Selective disclosure commitment with EXPECTED-VALUE matching.
+//
+// The prover supplies both the mDL values (from the OmniOne CX response,
+// bound into mdl_commit) AND a separate set of "expected" values that
+// either the user typed in or the dApp committed to ahead of time. For
+// each disclose_flag bit that is set, the corresponding mDL value MUST
+// equal the expected value byte-for-byte. owner_commit is then derived
+// from the expected values (masked by the same flags), so any party
+// that knows the expected values can pre-compute owner_commit and
+// challenge the prover with it.
+//
 //   Buffer layout (89 bytes): name(64) || birth(8) || sex(1) || telno(16).
-//   A bit not set in disclose_flags forces the corresponding slot to zero.
-//   The final hash also prepends the flag byte so distinct (flag, value)
-//   combinations produce distinct commits.
+//   A bit not set in disclose_flags forces the corresponding slot to
+//   zero and skips the equality check for that field.
 //
 //   disclose_flags == 0 -> owner_commit MUST be the 32-byte zero hash
-//   (anonymous mode). Otherwise the recomputed hash must match.
+//   (anonymous mode). No equality checks. Otherwise the recomputed hash
+//   over the masked expected values must match owner_commit.
 pub fn assert_owner_commit(
     disclose_flags: u8,
+    // mDL values (private, bound into mdl_commit)
     name:           [u8; 64],
     birth:          [u8; 8],
     sex:            u8,
     telno:          [u8; 16],
+    // Expected values supplied by user / dApp
+    expected_name:  [u8; 64],
+    expected_birth: [u8; 8],
+    expected_sex:   u8,
+    expected_telno: [u8; 16],
     owner_commit:   [u8; 32],
 ) {
-    let mut owner_buf: [u8; 89] = [0u8; 89];
-
     let mask_name  = ((disclose_flags & 0x01) as u32 != 0) as u32;
     let mask_birth = ((disclose_flags & 0x02) as u32 != 0) as u32;
     let mask_sex   = ((disclose_flags & 0x04) as u32 != 0) as u32;
     let mask_telno = ((disclose_flags & 0x08) as u32 != 0) as u32;
 
+    // Equality constraint: mask * (a - b) == 0 in Field arithmetic.
+    // When mask == 0 the constraint is trivially satisfied; when
+    // mask == 1 the constraint forces a == b.
+    let mask_name_f  = mask_name as Field;
+    let mask_birth_f = mask_birth as Field;
+    let mask_sex_f   = mask_sex as Field;
+    let mask_telno_f = mask_telno as Field;
     for i in 0..64 {
-        owner_buf[i] = (name[i] as u32 * mask_name) as u8;
+        let diff = (name[i] as Field) - (expected_name[i] as Field);
+        assert(mask_name_f * diff == 0, "Name mismatch");
     }
     for i in 0..8 {
-        owner_buf[64 + i] = (birth[i] as u32 * mask_birth) as u8;
+        let diff = (birth[i] as Field) - (expected_birth[i] as Field);
+        assert(mask_birth_f * diff == 0, "Birth mismatch");
     }
-    owner_buf[72] = (sex as u32 * mask_sex) as u8;
+    let diff_sex = (sex as Field) - (expected_sex as Field);
+    assert(mask_sex_f * diff_sex == 0, "Sex mismatch");
     for i in 0..16 {
-        owner_buf[73 + i] = (telno[i] as u32 * mask_telno) as u8;
+        let diff = (telno[i] as Field) - (expected_telno[i] as Field);
+        assert(mask_telno_f * diff == 0, "Telno mismatch");
+    }
+
+    // owner_commit = keccak(flag || masked_expected_buf).
+    let mut owner_buf: [u8; 89] = [0u8; 89];
+    for i in 0..64 {
+        owner_buf[i] = (expected_name[i] as u32 * mask_name) as u8;
+    }
+    for i in 0..8 {
+        owner_buf[64 + i] = (expected_birth[i] as u32 * mask_birth) as u8;
+    }
+    owner_buf[72] = (expected_sex as u32 * mask_sex) as u8;
+    for i in 0..16 {
+        owner_buf[73 + i] = (expected_telno[i] as u32 * mask_telno) as u8;
     }
 
     if disclose_flags == 0 {
