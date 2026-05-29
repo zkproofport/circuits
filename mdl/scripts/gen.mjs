@@ -11,7 +11,9 @@
 // Options:
 //   --input <oacx-response.json>  use a real OmniOne CX response (else demo)
 //   --scope <STR>                 default "openstoa:login:v1"
-//   --signal-hash-hex <0x...>     deterministic signal_hash (32 bytes)
+//   --signal-hash-hex <0x...>     INERT in v4 — accepted but value is dropped.
+//                                 Used by D1 re-login determinism test to prove
+//                                 that nullifier is independent of signal_hash.
 //   --flags 0x0F                  ownership: disclose_flags
 //   --age-threshold N             age: minimum age (default 19)
 //   --current-year N              age: reference year (default 2026)
@@ -19,7 +21,6 @@
 //   --address-override <STR>      replace demo address (test leading space / empty)
 //
 // Negative-test overrides (produce intentionally invalid Prover.toml):
-//   --corrupt-integrity           randomize cx_integrity_root
 //   --corrupt-nullifier           randomize nullifier_value
 //   --corrupt-owner-commit        randomize owner_commit (ownership only)
 //   --anon-with-nonzero           ownership flags=0 + nonzero owner_commit
@@ -27,8 +28,17 @@
 //   --corrupt-birth               mutate output birth_date after derivation
 //   --corrupt-address             mutate output address after derivation
 //   --year-before-birth           age: current_year := birth_year - 1
-//   --corrupt-signal-hash         randomize public signal_hash (mismatch)
 //   --corrupt-scope               randomize public scope (mismatch)
+//   --corrupt-ci                  mutate ci bytes (different user)
+//
+// NOTE (v4 — HS256 path dormant):
+//   --corrupt-integrity and --corrupt-signal-hash are accepted as INERT flags
+//   (parsed but not emitted into Prover.toml) because signal_hash and
+//   cx_integrity_root have been commented out of the v4 circuits pending RAON
+//   RP registration. Keep the flags to avoid breaking existing invocations.
+//
+// TODO(HS256): Re-enable --corrupt-integrity / --corrupt-signal-hash emission
+// when RAON registration provides the RP shared secret.
 
 import sha3 from 'js-sha3';
 const { keccak256 } = sha3;
@@ -74,21 +84,33 @@ const REGION      = typeof args['region'] === 'string' ? args['region'] : '경�
 const CURR_YEAR   = parseInt(typeof args['current-year']  === 'string' ? args['current-year']  : '2026', 10);
 const AGE_THRESH  = parseInt(typeof args['age-threshold'] === 'string' ? args['age-threshold'] : '19',   10);
 
-const CORRUPT_INTEGRITY     = args['corrupt-integrity']     === true;
+// INERT in v4 — accepted for CLI compatibility + D1 regression guard.
+// TODO(HS256): Re-enable when RAON registration provides the RP shared
+// secret. Currently disabled because no off-chain HS256 verifier exists,
+// so cx_integrity_root cannot anchor anything meaningfully.
+// const CORRUPT_INTEGRITY   = args['corrupt-integrity']   === true;  // INERT
+const SIGNAL_HASH_OVERRIDE  = typeof args['signal-hash-hex'] === 'string'
+  ? args['signal-hash-hex']
+  : null;
+// INERT — accepted but has no effect on the generated Prover.toml in v4.
+// const CORRUPT_SIGNAL_HASH = args['corrupt-signal-hash'] === true;  // INERT
+
 const CORRUPT_NULLIFIER     = args['corrupt-nullifier']     === true;
 const CORRUPT_OWNER_COMMIT  = args['corrupt-owner-commit']  === true;
 const ANON_WITH_NONZERO     = args['anon-with-nonzero']     === true;
 const NONANON_WITH_ZERO     = args['nonanon-with-zero']     === true;
 const YEAR_BEFORE_BIRTH     = args['year-before-birth']     === true;
 const CORRUPT_BIRTH         = args['corrupt-birth']         === true;
+// Corrupt the year digits (bytes 0-3) of birth_date so assert_age fails.
+// --corrupt-birth only mutates byte 7 (day digit) which assert_age ignores.
+const CORRUPT_BIRTH_YEAR    = args['corrupt-birth-year']    === true;
 const CORRUPT_ADDRESS       = args['corrupt-address']       === true;
-const CORRUPT_SIGNAL_HASH   = args['corrupt-signal-hash']   === true;
+// Corrupt bytes in the FIRST token of address (bytes 0-8) so extract_region_token fails.
+const CORRUPT_ADDRESS_TOKEN = args['corrupt-address-token'] === true;
 const CORRUPT_SCOPE         = args['corrupt-scope']         === true;
+const CORRUPT_CI            = args['corrupt-ci']            === true;
 const ADDRESS_OVERRIDE      = typeof args['address-override'] === 'string'
   ? args['address-override']
-  : null;
-const SIGNAL_HASH_OVERRIDE  = typeof args['signal-hash-hex'] === 'string'
-  ? args['signal-hash-hex']
   : null;
 const EXPECTED_NAME_OVERRIDE  = typeof args['expected-name']  === 'string' ? args['expected-name']  : null;
 const EXPECTED_BIRTH_OVERRIDE = typeof args['expected-birth'] === 'string' ? args['expected-birth'] : null;
@@ -128,9 +150,12 @@ const tomlArray = (bytes) => '[' + Array.from(bytes).join(', ') + ']';
 // ───────────────────────────────────────────────
 // Buffers (must match mdl_kr_common globals)
 // ───────────────────────────────────────────────
-const ci      = padZero(oacx.ci,    88, 'utf8');
-const jti     = padZero(oacx.jti,   40, 'utf8');
-const pri     = padZero(oacx.pri,   44, 'utf8');
+let ci     = padZero(oacx.ci,    88, 'utf8');
+// TODO(HS256): Re-enable when RAON registration provides the RP shared
+// secret. Currently disabled because no off-chain HS256 verifier exists,
+// so cx_integrity_root cannot anchor anything meaningfully.
+// const jti  = padZero(oacx.jti,   40, 'utf8');
+// const pri  = padZero(oacx.pri,   44, 'utf8');
 const name    = padZero(oacx.name,  64, 'utf8');
 const telno   = padZero(oacx.telno, 16, 'utf8');
 const sex     = oacx.sex && oacx.sex.length > 0 ? oacx.sex.charCodeAt(0) : 0;
@@ -138,61 +163,59 @@ const birth   = padZero(oacx.birth, 8,  'utf8');
 const address = padZero(oacx.address || '', 256, 'utf8');
 const targetRegion = padZero(REGION, 64, 'utf8');
 
-// Expected-value tuple for the ownership circuit. Defaults to the mDL
-// values themselves so honest PASS fixtures don't need explicit
-// overrides. Negative-test fixtures override one or more to a
-// different value and expect the circuit to reject.
+// "Expected" overrides only affect the off-circuit owner_commit hash.
 const expectedNameStr  = EXPECTED_NAME_OVERRIDE  ?? oacx.name;
 const expectedBirthStr = EXPECTED_BIRTH_OVERRIDE ?? oacx.birth;
 const expectedSexStr   = EXPECTED_SEX_OVERRIDE   ?? (oacx.sex ?? '');
 const expectedTelnoStr = EXPECTED_TELNO_OVERRIDE ?? oacx.telno;
-const expected_name  = padZero(expectedNameStr,  64, 'utf8');
-const expected_birth = padZero(expectedBirthStr, 8,  'utf8');
-const expected_telno = padZero(expectedTelnoStr, 16, 'utf8');
-const expected_sex   = expectedSexStr && expectedSexStr.length > 0
+const expected_name_buf  = padZero(expectedNameStr,  64, 'utf8');
+const expected_birth_buf = padZero(expectedBirthStr, 8,  'utf8');
+const expected_telno_buf = padZero(expectedTelnoStr, 16, 'utf8');
+const expected_sex_byte  = expectedSexStr && expectedSexStr.length > 0
   ? expectedSexStr.charCodeAt(0)
   : 0;
 
 // ───────────────────────────────────────────────
-// Derivation (honest)
+// v4 nullifier: keccak(keccak(ci) || scope)
+// Matches mdl_kr_common::verify_nullifier and the OIDC circuit formula.
 // ───────────────────────────────────────────────
-let cx_integrity_root = k256(Buffer.concat([jti, pri]));
-if (CORRUPT_INTEGRITY) cx_integrity_root = randomBytes(32);
 
-const mdl_buf = Buffer.concat([ci, jti, pri, birth, address]); // 88+40+44+8+256 = 436
-const mdl_commit = k256(mdl_buf);
-const self_id_20 = mdl_commit.subarray(0, 20);
-
-let scope = k256(Buffer.from(SCOPE_STR, 'utf8'));
-let signal_hash = SIGNAL_HASH_OVERRIDE
-  ? Buffer.from(SIGNAL_HASH_OVERRIDE.replace(/^0x/, ''), 'hex')
-  : randomBytes(32);
-if (signal_hash.length !== 32) {
-  throw new Error(`signal_hash must be 32 bytes, got ${signal_hash.length}`);
+// --corrupt-ci: mutate a ci byte BEFORE nullifier derivation so the
+// circuit's recomputed keccak(ci) disagrees with nullifier_value.
+if (CORRUPT_CI) {
+  ci = Buffer.from(ci);
+  ci[0] = ci[0] === 0x41 ? 0x42 : 0x41;
 }
 
-const user_secret = k256(Buffer.concat([self_id_20, signal_hash]));
-let nullifier_value = k256(Buffer.concat([user_secret, scope]));
+const ci_hash = k256(ci);
+let scope = k256(Buffer.from(SCOPE_STR, 'utf8'));
+
+// --signal-hash-hex is INERT in v4 (accepted for D1 regression guard,
+// not emitted). Log it so callers can see it was received.
+if (SIGNAL_HASH_OVERRIDE !== null) {
+  const shBuf = Buffer.from(SIGNAL_HASH_OVERRIDE.replace(/^0x/, ''), 'hex');
+  if (shBuf.length !== 32) {
+    throw new Error(`signal_hash must be 32 bytes, got ${shBuf.length}`);
+  }
+  // NOTE: value intentionally unused — v4 nullifier does not use signal_hash.
+}
+
+let nullifier_value = k256(Buffer.concat([ci_hash, scope]));
 if (CORRUPT_NULLIFIER) nullifier_value = randomBytes(32);
 
-// Public-input tamper: mutate the *published* signal_hash / scope after
-// the nullifier has been derived, so the circuit's recomputation
-// disagrees with the published nullifier_value.
-if (CORRUPT_SIGNAL_HASH) signal_hash = randomBytes(32);
-if (CORRUPT_SCOPE)       scope       = randomBytes(32);
+// --corrupt-scope: mutate the *published* scope after nullifier derivation.
+if (CORRUPT_SCOPE) scope = randomBytes(32);
 
 const region_code = k256(targetRegion);
 
 const disclose_flags = parseInt(FLAGS_HEX, 16);
-// owner_commit is derived from the EXPECTED values masked by the flag
-// bits. The mDL values themselves are not in the hash; the circuit
-// instead asserts (when the flag is set) that mDL.X == expected.X
-// byte-for-byte, so the two are forced equal anyway.
+// owner_commit computed OFF-CIRCUIT from expected values.
+// Buffer layout (89 bytes): name(64) || telno(16) || birth(8) || sex(1).
 const owner_buf = Buffer.alloc(89);
-if (disclose_flags & 0x01) expected_name.copy(owner_buf, 0);
-if (disclose_flags & 0x02) expected_birth.copy(owner_buf, 64);
-if (disclose_flags & 0x04) owner_buf[72] = expected_sex;
-if (disclose_flags & 0x08) expected_telno.copy(owner_buf, 73);
+if (disclose_flags & 0x01) expected_name_buf.copy(owner_buf, 0);
+if (disclose_flags & 0x08) expected_telno_buf.copy(owner_buf, 64);
+if (disclose_flags & 0x02) expected_birth_buf.copy(owner_buf, 80);
+if (disclose_flags & 0x04) owner_buf[88] = expected_sex_byte;
 
 let owner_commit;
 if (disclose_flags === 0) {
@@ -204,17 +227,36 @@ if (CORRUPT_OWNER_COMMIT)   owner_commit = randomBytes(32);
 if (ANON_WITH_NONZERO && disclose_flags === 0) owner_commit = randomBytes(32);
 if (NONANON_WITH_ZERO && disclose_flags !== 0) owner_commit = Buffer.alloc(32);
 
-// Mutate private inputs *after* derivation so the circuit's recomputed
-// mdl_commit no longer matches the published nullifier_value.
+// Mutate private inputs *after* derivation.
 let outBirth   = birth;
 let outAddress = address;
 if (CORRUPT_BIRTH) {
+  // Flips the day digit (byte 7). NOTE: assert_age only reads bytes 0-3
+  // (the year), so this does NOT cause a circuit failure in v4. This flag
+  // is kept for compatibility; use --corrupt-birth-year for a real FAIL.
   outBirth = Buffer.from(birth);
   outBirth[7] = outBirth[7] === 0x39 ? 0x30 : 0x39;
 }
+if (CORRUPT_BIRTH_YEAR) {
+  // Flips the first year digit (byte 0: '1' -> '2'), so birth_year becomes
+  // 2985 and assert_age fails with "Birth year exceeds current year".
+  outBirth = Buffer.from(birth);
+  outBirth[0] = outBirth[0] === 0x31 ? 0x32 : 0x31; // '1' <-> '2'
+}
 if (CORRUPT_ADDRESS) {
+  // Flips a byte deep in the address buffer (byte 200). NOTE: extract_region_token
+  // reads only the first whitespace-separated token (bytes 0-~15 for Korean
+  // si/do), so this does NOT cause a region mismatch in v4. This flag is kept
+  // for compatibility; use --corrupt-address-token for a real FAIL.
   outAddress = Buffer.from(address);
   outAddress[200] = outAddress[200] ^ 0xff;
+}
+if (CORRUPT_ADDRESS_TOKEN) {
+  // Flips byte 0 of the address, corrupting the first character of the first
+  // token that extract_region_token extracts. This reliably fails the region
+  // assertion even after the v4 nullifier change.
+  outAddress = Buffer.from(address);
+  outAddress[0] = outAddress[0] ^ 0x01;
 }
 
 let outCurrYear = CURR_YEAR;
@@ -224,17 +266,23 @@ if (YEAR_BEFORE_BIRTH) {
 }
 
 // ───────────────────────────────────────────────
-// Emit
+// Emit Prover.toml
 // ───────────────────────────────────────────────
 const lines = [
-  `# Auto-generated by scripts/gen.mjs --circuit ${CIRCUIT}`,
+  `# Auto-generated by scripts/gen.mjs --circuit ${CIRCUIT} (v4)`,
   `# Demo: Korean mobile driver license (${oacx.name})`,
+  `# v4 nullifier: keccak(keccak(ci) || scope) — signal_hash and cx_integrity_root`,
+  `# are commented out pending RAON RP registration (HS256 path dormant).`,
   '',
   '# ============ Public Inputs ============',
-  `signal_hash       = ${tomlArray(signal_hash)}`,
+  // TODO(HS256): Re-enable signal_hash emission when RAON registration provides
+  // the RP shared secret.
+  // `signal_hash       = ${tomlArray(signal_hash)}`,
   `scope             = ${tomlArray(scope)}`,
   `nullifier_value   = ${tomlArray(nullifier_value)}`,
-  `cx_integrity_root = ${tomlArray(cx_integrity_root)}`,
+  // TODO(HS256): Re-enable cx_integrity_root emission when RAON registration
+  // provides the RP shared secret.
+  // `cx_integrity_root = ${tomlArray(cx_integrity_root)}`,
 ];
 
 if (CIRCUIT === 'ownership') {
@@ -250,22 +298,28 @@ if (CIRCUIT === 'ownership') {
 lines.push('');
 lines.push('# ============ Private Inputs ============');
 lines.push(`ci          = ${tomlArray(ci)}`);
-lines.push(`cx_jti      = ${tomlArray(jti)}`);
-lines.push(`cx_pri      = ${tomlArray(pri)}`);
+// TODO(HS256): Re-enable cx_jti / cx_pri emission when RAON registration
+// provides the RP shared secret.
+// lines.push(`cx_jti      = ${tomlArray(jti)}`);
+// lines.push(`cx_pri      = ${tomlArray(pri)}`);
 
 if (CIRCUIT === 'ownership') {
-  lines.push(`name           = ${tomlArray(name)}`);
-  lines.push(`birth_date     = ${tomlArray(outBirth)}`);
-  lines.push(`telno          = ${tomlArray(telno)}`);
-  lines.push(`sex            = ${sex}`);
-  lines.push(`address        = ${tomlArray(outAddress)}`);
-  lines.push(`expected_name  = ${tomlArray(expected_name)}`);
-  lines.push(`expected_birth = ${tomlArray(expected_birth)}`);
-  lines.push(`expected_telno = ${tomlArray(expected_telno)}`);
-  lines.push(`expected_sex   = ${expected_sex}`);
-} else {
-  // age + region share the same minimal private set
+  lines.push(`name        = ${tomlArray(name)}`);
   lines.push(`birth_date  = ${tomlArray(outBirth)}`);
+  lines.push(`telno       = ${tomlArray(telno)}`);
+  lines.push(`sex         = ${sex}`);
+  // address not needed in v4 ownership
+  // TODO(HS256): Re-enable address when derive_self_id_20 is re-enabled.
+  // lines.push(`address     = ${tomlArray(outAddress)}`);
+} else if (CIRCUIT === 'age') {
+  lines.push(`birth_date  = ${tomlArray(outBirth)}`);
+  // address not needed in v4 age
+  // TODO(HS256): Re-enable address when derive_self_id_20 is re-enabled.
+  // lines.push(`address     = ${tomlArray(outAddress)}`);
+} else if (CIRCUIT === 'region') {
+  // birth_date not needed in v4 region
+  // TODO(HS256): Re-enable birth_date when derive_self_id_20 is re-enabled.
+  // lines.push(`birth_date  = ${tomlArray(outBirth)}`);
   lines.push(`address     = ${tomlArray(outAddress)}`);
 }
 
@@ -279,8 +333,12 @@ writeFileSync(outPath, lines.join('\n'));
 console.log('Wrote:', outPath);
 console.log('  circuit          =', CIRCUIT);
 console.log('  nullifier_value  = 0x' + nullifier_value.toString('hex'));
-console.log('  signal_hash      = 0x' + signal_hash.toString('hex'));
+console.log('  ci_hash          = 0x' + ci_hash.toString('hex'));
 console.log('  scope            = 0x' + scope.toString('hex'));
+// NOTE: signal_hash is INERT in v4 — not emitted to Prover.toml.
+if (SIGNAL_HASH_OVERRIDE !== null) {
+  console.log('  signal_hash_hex  = (INERT in v4 — accepted but not used for nullifier)');
+}
 if (CIRCUIT === 'ownership') {
   console.log('  disclose_flags   = 0x' + disclose_flags.toString(16).padStart(2, '0'));
   console.log('  owner_commit     = 0x' + owner_commit.toString('hex'));
