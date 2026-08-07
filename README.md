@@ -40,7 +40,7 @@ GIWA Sepolia proof flow using a test `MockGiwaAttester`, mobile-compatible Ultra
 
 Three circuits under `mdl/` implement ownership/selective field commitment, year-based age threshold, and region-token predicates. They share `keccak256(keccak256(ci) || scope)` nullifiers.
 
-The active circuits do not yet cryptographically authenticate claims against a canonical Mobile ID issuer trust anchor. Verifier deployments demonstrate proof verification only.
+The active circuits do not yet cryptographically authenticate claims against a canonical Mobile ID issuer trust anchor.
 
 ## Shared nullifier schemes
 
