@@ -1,140 +1,153 @@
-# ZKProofport Circuit Library
+# Privacy-Preserving Credential Circuits
 
-## Overview
+Open-source Noir reference implementations and EVM verifiers for privacy-preserving credential [CIPs](https://github.com/zkproofport/CIPs).
 
-Noir ZK circuits for the Proofport protocol. Each circuit generates zero-knowledge proofs for specific on-chain attestations without revealing user identity.
+This repository contains executable circuit code, shared Noir libraries, generated verifier contracts, scripts, and deployment records. Normative statement semantics, trust assumptions, privacy boundaries, and conformance requirements are documented separately in the CIPs repository.
 
-## Available Circuits
+## CIP mapping and maturity
 
-### coinbase-attestation (Active)
-Proves Coinbase KYC attestation using hybrid verification:
-- Off-chain: JavaScript `ecrecover` derives signer public key
-- On-chain: Noir verifies ECDSA signature via `std::ecdsa_secp256k1::verify_signature`
-- Includes nullifier generation for sybil resistance
+| CIP | Specification | Reference path | Implementation maturity |
+|---|---|---|---|
+| CIP-1 | [Coinbase KYC Attestation](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-1.md) | [`coinbase-attestation`](coinbase-attestation) | Reference |
+| CIP-2 | [Coinbase Country Predicate](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-2.md) | [`coinbase-country-attestation`](coinbase-country-attestation) | Reference |
+| CIP-3 | [OIDC Domain Attestation](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-3.md) | [`oidc-domain-attestation`](oidc-domain-attestation) | Reference |
+| CIP-4 | [GIWA Dojang Verified Address Proof](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-4.md) | [`giwa-attestation`](giwa-attestation) | PoC |
+| CIP-5 | [Korean Mobile ID Selective Disclosure Profile](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-5.md) | [`mdl/kr-*`](mdl) | Experimental |
 
-### coinbase-country-attestation (Active)
-Proves Coinbase country attestation without revealing the country. Built on shared `coinbase-libs`.
+`coinbase-libs` is a shared implementation library. `coinbase-kyc` is an older reference-only circuit. `_archived-poc` and `zktls` are outside the current credential CIP mapping.
 
-### oidc-domain-attestation (Active)
-Proves email domain affiliation via OIDC JWT (Google, Microsoft) without revealing the full email address.
-- RSA-2048 signature verification of JWT
-- Domain extraction from email claim
-- Nullifier generation from email + scope (Sybil-resistant)
-- Provider support: Google (email_verified), Microsoft 365 (xms_edov)
-- 148 public inputs: pubkey_modulus_limbs[18] + domain BoundedVec<u8,64> + scope[32] + nullifier[32] + provider[1]
+## Implemented circuits
 
-### coinbase-libs (Shared Library)
-Shared Noir library providing nullifier generation, RLP parser, Merkle proof verification, and Ethereum helpers.
+### Coinbase KYC attestation — Reference
 
-### coinbase-kyc (Reference Only)
-Original circuit implementation. Kept as reference, not actively developed.
+Proves control of an address named by a signed Coinbase `attestAccount(address)` transaction while keeping the address, transaction, and signatures private. The circuit verifies user ownership, EIP-1559 transaction structure and signature, signer membership in a public Merkle root, target calldata, and a signal- and scope-bound nullifier.
 
-## Public Inputs
+### Coinbase country predicate — Reference
 
-### Coinbase Circuits
+Extends the Coinbase transaction profile with a private two-byte country code and a public inclusion or exclusion list of up to ten ISO 3166-1 alpha-2 values.
 
-Coinbase attestation circuits share these public inputs:
+### OIDC domain attestation — Reference
 
-| Input | Description |
-|-------|-------------|
-| `signal_hash` | Anti-replay challenge from dApp |
-| `signer_list_merkle_root` | Merkle root of authorized Coinbase signers |
-| `scope` | Nullifier scope identifier |
-| `nullifier` | Sybil resistance identifier |
+Verifies a Google Workspace or Microsoft 365 OIDC JWT with RSA-2048 and proves that its private email ends in a public domain. It exposes a provider identifier and an email-derived scope-bound nullifier.
 
-### OIDC Domain Attestation Circuit
+Provider key authorization, JWT freshness, issuer, audience, and nonce policy are not enforced by the current circuit and must be handled by an integration profile.
 
-The OIDC circuit has a distinct layout with 148 public inputs:
+### GIWA attestation — PoC
 
-| Input | Count | Description |
-|-------|-------|-------------|
-| `pubkey_modulus_limbs` | 18 | RSA-2048 public key modulus (18 x 120-bit limbs) |
-| `domain` | 65 | BoundedVec\<u8,64\>: length prefix + domain bytes |
-| `scope` | 32 | Nullifier scope identifier (32 bytes) |
-| `nullifier` | 32 | Sybil resistance identifier (32 bytes) |
-| `provider` | 1 | OIDC provider (0 = Google, 1 = Microsoft) |
+GIWA Sepolia proof flow using a test `MockGiwaAttester`, mobile-compatible UltraHonk proof generation, and an EVM verifier. This is not an official production Dojang issuer or schema integration.
 
-## Nullifier Scheme
+### Korean Mobile ID predicates — Experimental
 
-```
-scope = keccak256(scope_string)
-user_secret = keccak256(user_address ++ signal_hash)
-nullifier = keccak256(user_secret ++ scope)
+Three circuits under `mdl/` implement ownership/selective field commitment, year-based age threshold, and region-token predicates. They share `keccak256(keccak256(ci) || scope)` nullifiers.
+
+The active circuits do not yet cryptographically authenticate claims against a canonical Mobile ID issuer trust anchor. Verifier deployments demonstrate proof verification only.
+
+## Shared nullifier schemes
+
+### Coinbase and GIWA transaction profiles
+
+```text
+user_secret = keccak256(user_address || signal_hash)
+nullifier   = keccak256(user_secret || scope)
 ```
 
-Same user + same scope = same nullifier (duplicate detected).
+Duplicate-detection behavior depends on both `signal_hash` and `scope` remaining stable for the relevant action.
+
+### OIDC domain profile
+
+```text
+nullifier = keccak256(keccak256(email) || scope)
+```
+
+### Korean Mobile ID experimental profile
+
+```text
+nullifier = keccak256(keccak256(ci) || scope)
+```
+
+Nullifier storage is application-specific. `NullifierRegistry` and `ZKProofportNullifierRegistry` are deprecated and are retained only as historical source references.
 
 ## Building
 
+The current generated artifacts were built with:
+
+- `nargo 1.0.0-beta.8`
+- `bb v1.0.0-nightly.20250723`
+
 ```bash
-# Full build pipeline (compile + VK + Solidity verifier)
 ./scripts/build.sh coinbase-attestation
 ./scripts/build.sh coinbase-country-attestation
 ./scripts/build.sh oidc-domain-attestation
+./scripts/build.sh giwa-attestation
+./scripts/build.sh mdl/kr-ownership
+./scripts/build.sh mdl/kr-age
+./scripts/build.sh mdl/kr-region
 ```
 
-Required tools (exact versions):
-- nargo 1.0.0-beta.8
-- bb v1.0.0-nightly.20250723
+Generated Solidity verifiers expose the common interface:
 
-## Deploying Verifiers
+```solidity
+function verify(bytes calldata proof, bytes32[] calldata publicInputs)
+    external
+    view
+    returns (bool);
+```
 
-Prerequisites: `.env.development` or `.env.production` with `PRIVATE_KEY`, RPC URLs, `ETHERSCAN_API_KEY`.
+See each pinned CIP for semantic public-input ordering and conformance requirements.
+
+## Reference deployments
+
+The tables below are synchronized with `broadcast/**/run-latest.json` at revision [`28bbc303e04b732eb612d419b44dfd39d8a38a9a`](https://github.com/zkproofport/circuits/commit/28bbc303e04b732eb612d419b44dfd39d8a38a9a).
+
+### Ethereum Sepolia — chain ID 11155111
+
+| Circuit | Verifier | Deployment record |
+|---|---|---|
+| Coinbase KYC | `0xcbc8e63ff92659e8b44cff117d33005bb669a018` | [`DeployCoinbaseAttestation`](broadcast/DeployCoinbaseAttestation.s.sol/11155111/run-latest.json) |
+| Coinbase Country | `0x6646d970499bbed728636823a5a7e551e811b414` | [`DeployCoinbaseCountryAttestation`](broadcast/DeployCoinbaseCountryAttestation.s.sol/11155111/run-latest.json) |
+| OIDC Domain | `0x07121eb50b2ebe1675e7cb96c84b580a3ff6589e` | [`DeployOidcDomainAttestation`](broadcast/DeployOidcDomainAttestation.s.sol/11155111/run-latest.json) |
+
+### Base Sepolia — chain ID 84532
+
+| Circuit | Verifier | Deployment record |
+|---|---|---|
+| Coinbase KYC | `0x0036b61dbfab8f3cfeef77dd5d45f7efbfe2035c` | [`DeployCoinbaseAttestation`](broadcast/DeployCoinbaseAttestation.s.sol/84532/run-latest.json) |
+| Coinbase Country | `0xdee363585926c3c28327efd1edd01cf4559738cf` | [`DeployCoinbaseCountryAttestation`](broadcast/DeployCoinbaseCountryAttestation.s.sol/84532/run-latest.json) |
+| OIDC Domain | `0x27afdea349f247cf698f97fdfab59e1bf8bd0550` | [`DeployOidcDomainAttestation`](broadcast/DeployOidcDomainAttestation.s.sol/84532/run-latest.json) |
+| Mobile ID ownership | `0x7602d09d24e6e16eff5ab981646872886376763e` | [`DeployMdlKrOwnership`](broadcast/DeployMdlKrOwnership.s.sol/84532/run-latest.json) |
+| Mobile ID age | `0xcff90ff8ceadc98f625300dc976ed85a3aa943ba` | [`DeployMdlKrAge`](broadcast/DeployMdlKrAge.s.sol/84532/run-latest.json) |
+| Mobile ID region | `0x435f0448f02f5df9659d460181116bcaf37e518e` | [`DeployMdlKrRegion`](broadcast/DeployMdlKrRegion.s.sol/84532/run-latest.json) |
+
+### Base Mainnet — chain ID 8453
+
+| Circuit | Verifier | Deployment record |
+|---|---|---|
+| Coinbase KYC | `0xf7ded73e7a7fc8fb030c35c5a88d40abe6865382` | [`DeployCoinbaseAttestation`](broadcast/DeployCoinbaseAttestation.s.sol/8453/run-latest.json) |
+| Coinbase Country | `0xf3d5a09d2c85b28c52ef2905c1be3a852b609d0c` | [`DeployCoinbaseCountryAttestation`](broadcast/DeployCoinbaseCountryAttestation.s.sol/8453/run-latest.json) |
+| OIDC Domain | `0x9677ba46ad226ce8b3c4517d9c0143e4d458beae` | [`DeployOidcDomainAttestation`](broadcast/DeployOidcDomainAttestation.s.sol/8453/run-latest.json) |
+
+### GIWA Sepolia — chain ID 91342
+
+| Circuit | Verifier | Deployment record |
+|---|---|---|
+| GIWA attestation PoC | `0xeb9eb5452790cfe549ff83ceb3dbe1c432231492` | [`DeployGiwaAttestation`](broadcast/DeployGiwaAttestation.s.sol/91342/run-latest.json) |
+
+Reference deployments support reproducibility and interoperability. A deployment does not imply an external security audit, current credential status, or production credential integration.
+
+## Deploying verifiers
+
+Deployment scripts are under [`script/`](script), with generated verifier sources under each circuit's `target/` directory. The generic helper accepts configured network names:
 
 ```bash
-# 1. Deploy shared library (once per network)
-./scripts/deploy_verifier.sh lib base-sepolia
-
-# 2. Deploy verifier contracts
 ./scripts/deploy_verifier.sh coinbase-attestation base-sepolia
-./scripts/deploy_verifier.sh coinbase-country-attestation base-sepolia
-./scripts/deploy_verifier.sh oidc-domain-attestation base-sepolia
 ```
 
-> **Note:** OIDC domain attestation is verified both on-chain (via deployed verifier contracts) and off-chain (via `bb verify` in the AI server).
+Environment-specific keys, RPC URLs, and explorer credentials are required. Deployment is not part of CIP conformance.
 
-Supported networks: base-sepolia, sepolia, base, mainnet
+## Security status
 
-## Current Deployments
-
-### Base Sepolia (Chain ID: 84532)
-
-| Contract | Address |
-|----------|---------|
-| ZKTranscriptLib | `0xD4A84AcCA4d9A94ec194a10226eC600fFF0939E7` |
-| CoinbaseAttestation | `0xEb9eb5452790Cfe549fF83CEB3Dbe1C432231492` |
-| CoinbaseCountryAttestation | `0xD0F3eE648386B59B484157332E736388Fcc41F47` |
-| OidcDomainAttestation | `0x27afdea349f247cf698f97fdfab59e1bf8bd0550` |
-| ~~ZKProofportNullifierRegistry~~ | ~~`0xC6a8dC34B1872a883aFCc808C90c31c038764d9a`~~ (DEPRECATED) |
-
-### Base Mainnet (Chain ID: 8453)
-
-| Contract | Address |
-|----------|---------|
-| ZKTranscriptLib | `0x5A74865E3027FEeaE68cb1F07970442F2cbE00B1` |
-| CoinbaseAttestation | `0xF7dED73E7a7fc8fb030c35c5A88D40ABe6865382` |
-| CoinbaseCountryAttestation | `0xF3D5A09d2C85B28C52EF2905c1BE3a852b609D0C` |
-| OidcDomainAttestation | `0x9677ba46ad226ce8b3c4517d9c0143e4d458beae` |
-
-## Smart Contracts
-
-### Verifier Contracts
-Generated Solidity contracts that verify UltraHonk proofs on-chain. Each circuit has its own verifier.
-
-### NullifierRegistry (DEPRECATED)
-Multi-circuit nullifier registry. **Deprecated** — nullifier management is handled off-chain. Source code kept for reference only.
-
-## Constants
-
-| Constant | Value |
-|----------|-------|
-| Coinbase Attester | `0x357458739F90461b99789350868CD7CF330Dd7EE` |
-| Function Selector | `0x56feed5e` (attestAccount) |
-
-## Security
-
-These circuits are experimental and have not undergone a formal security audit. Use with caution in production.
+No external security audit or formal verification is documented for the current circuits. Review each CIP's trust assumptions and known limitations before relying on a reference implementation or deployment.
 
 ## License
 
-MIT
+MIT, preserving the repository's existing license intent. Vendored dependencies retain their respective licenses.
