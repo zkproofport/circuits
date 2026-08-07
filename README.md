@@ -34,7 +34,7 @@ Provider key authorization, JWT freshness, issuer, audience, and nonce policy ar
 
 ### GIWA attestation — PoC
 
-GIWA Sepolia proof flow using a test `MockGiwaAttester`, mobile-compatible UltraHonk proof generation, and an EVM verifier. This is not an official production Dojang issuer or schema integration.
+GIWA Sepolia proof flow using a test `MockGiwaAttester`, mobile-compatible UltraHonk proof generation, and an EVM verifier. Production Dojang issuer and schema parameters remain unresolved.
 
 ### Korean Mobile ID predicates — Experimental
 
@@ -132,8 +132,6 @@ The tables below are synchronized with `broadcast/**/run-latest.json` at revisio
 |---|---|---|
 | GIWA attestation PoC | `0xeb9eb5452790cfe549ff83ceb3dbe1c432231492` | [`DeployGiwaAttestation`](broadcast/DeployGiwaAttestation.s.sol/91342/run-latest.json) |
 
-Reference deployments support reproducibility and interoperability. A deployment does not imply an external security audit, current credential status, or production credential integration.
-
 ## Deploying verifiers
 
 Deployment scripts are under [`script/`](script), with generated verifier sources under each circuit's `target/` directory. The generic helper accepts configured network names:
@@ -142,7 +140,7 @@ Deployment scripts are under [`script/`](script), with generated verifier source
 ./scripts/deploy_verifier.sh coinbase-attestation base-sepolia
 ```
 
-Environment-specific keys, RPC URLs, and explorer credentials are required. Deployment is not part of CIP conformance.
+Environment-specific keys, RPC URLs, and explorer credentials are required.
 
 ## Security status
 
