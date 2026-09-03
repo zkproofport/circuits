@@ -43,8 +43,22 @@ BB_VERSION=$(bb --version)
 echo "bb CLI version: $BB_VERSION"
 echo ""
 
-rm -rf ./target/proof ./target/vk
 rm -f ./target/*.json ./target/*.sol
+
+# Do NOT `rm -rf` ./target/vk or ./target/proof, and do not delete the files bb
+# writes inside them either — bb truncates vk, vk_hash, proof and public_inputs
+# in place, so nothing stale survives a successful build. bb runs in a container
+# over a bind-mounted host directory (Colima/lima on this machine); when the host
+# removes a path that a container wrote into, the next container still resolves
+# the old, now-deleted inode for it and dies with
+#   Failed to open data file for writing: ./target/vk/vk (No such file or directory)
+# Measured on kr-age, 6 consecutive builds each: `rm -rf ./target/vk` + let bb
+# create it = 2 of 3 builds fail; `rm -rf` + host mkdir = 1 of 2 fail. Keeping the
+# directory fixed vk and moved the identical failure onto ./target/proof, the
+# other directory that was being `rm -rf`'d — so neither is removed now. Keeping
+# target/vk also preserves the committed target/vk/SHA256SUMS digests, which the
+# old `rm -rf` deleted on every build.
+mkdir -p ./target/vk ./target/proof
 
 # Detect whether this circuit ships a post-build hook (e.g. acceptance
 # tests). If so, the hook OWNS all witness/prove/verify steps — the
@@ -71,6 +85,21 @@ fi
 CIRCUIT_NAME=$(basename "$CIRCUIT_JSON" .json)
 echo "Circuit name: $CIRCUIT_NAME"
 echo ""
+
+# NOTE ON THE PATHS INSIDE THE ARTIFACT
+#
+# nargo records the absolute path of every source file it read into the
+# compiled .json (`file_map[*].path`), so two checkouts of the same commit
+# produce byte-different artifacts purely because the accounts differ. The
+# committed files carry /Users/nhn/...; a rebuild anywhere else writes its own.
+# bytecode, abi, names and noir_version are identical — only file_map,
+# debug_symbols and hash move.
+#
+# Do NOT paper over this by rewriting the paths after compiling. That was tried
+# on 2026-09-04 and removed: the artifacts are meant to be produced by CI
+# (.github/workflows/build-circuits.yml), which always builds at the same path,
+# so there is nothing to normalize. Rewriting them locally would only make a
+# local build look like a CI build while being neither.
 
 # 2. Generate Verification Key (Keccak oracle hash + ZK)
 echo "2. Generating Verification Key (Keccak + ZK)..."

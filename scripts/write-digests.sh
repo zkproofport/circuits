@@ -88,8 +88,17 @@ emit() {
   fi
 }
 
-for target in */target; do
+# Both depths, because the Korea mobile ID circuits live one level deeper
+# (mdl/kr-ownership, mdl/kr-age, mdl/kr-region). A single-level `*/target` walk
+# skipped all three, so those were the only circuits shipping with no published
+# digest at all — while proofport-app/src/config/contracts.ts downloads exactly
+# them. The app then fell back to comparing byte counts, which is the weakness
+# the digests were introduced to close. Found 2026-09-04.
+for target in */target */*/target; do
   [[ -d "$target" ]] || continue
+  # Retired proof-of-concept circuits are not published and not downloaded by
+  # anything, so digesting them would only create manifests that go stale.
+  [[ "$target" == _archived-poc/* ]] && continue
 
   names=()
   for pattern in $DOWNLOADED_IN_TARGET; do

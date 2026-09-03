@@ -1,0 +1,165 @@
+name: Build circuits
+
+# Why this exists
+#
+# Until now every circuit artifact in this repository was built by hand on
+# whoever's laptop and committed from there. Two things went wrong because of
+# that, both found on 2026-09-04:
+#
+#   * The committed artifacts were stale. They were built 2026-02-02, and the
+#     keccak256 dependency was vendored into deps/ on 2026-05-01. Nobody
+#     rebuilt after that, so the committed .json no longer matches what the
+#     current Nargo.toml set produces — on any machine.
+#   * Rebuilding produced a dirty tree even when nothing had changed, because
+#     nargo records the absolute path of every source file it read. The
+#     artifacts carry the previous machine's account name.
+#
+# Running the build here fixes both: the path is always the same, and the
+# verify job fails the moment the committed artifacts drift from the source.
+# (build.sh also normalizes those embedded paths, so a local build and a CI
+# build agree byte for byte — that is what makes verifying meaningful.)
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_artifacts:
+        description: 'Commit the rebuilt artifacts back to this branch'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - '**/src/**.nr'
+      - '**/Nargo.toml'
+      - 'deps/**'
+      - 'scripts/build.sh'
+      - 'scripts/write-digests.sh'
+      - 'scripts/normalize-artifact-paths.py'
+      - '.github/workflows/build-circuits.yml'
+
+# The version lock. Both are load-bearing and neither may drift:
+# nargo compiles the circuit, and bb must be the build the on-device prover
+# links against (mopro pins noir_rs v1.0.0-beta.8-3, whose bb/Cargo.toml and
+# bb/download_bb.sh both name this exact nightly). A different bb produces a
+# verification key the phone's prover cannot use.
+env:
+  NARGO_VERSION: 1.0.0-beta.8
+  BB_IMAGE: aztecprotocol/aztec:1.0.0-nightly.20250723-amd64
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nargo ${{ env.NARGO_VERSION }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
+          echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.nargo/bin/noirup" --version "${NARGO_VERSION}"
+
+      - name: Check nargo is the pinned version
+        run: |
+          got="$(nargo --version | sed -n 's/^nargo version = //p')"
+          if [ "$got" != "$NARGO_VERSION" ]; then
+            echo "nargo is $got, expected $NARGO_VERSION" >&2
+            exit 1
+          fi
+
+      # The runner is x86_64, so this image runs natively — no emulation. That
+      # is the one place the docker route is the right answer; on Apple Silicon
+      # it is not (see scripts/build-bb-native.sh for why, and for how to get
+      # the same binary natively there).
+      - name: Install the pinned bb
+        run: |
+          docker pull "$BB_IMAGE"
+          sudo install -d /usr/local/bin
+          cat <<'WRAPPER' | sudo tee /usr/local/bin/bb >/dev/null
+          #!/bin/bash
+          exec docker run --rm \
+            --entrypoint /usr/src/barretenberg/cpp/build/bin/bb \
+            -v "$(pwd)":/work -w /work \
+            aztecprotocol/aztec:1.0.0-nightly.20250723-amd64 "$@"
+          WRAPPER
+          sudo chmod +x /usr/local/bin/bb
+          # This image reports 00000000.00000000.00000000 because it never went
+          # through Aztec's release step that patches the version into the
+          # binary. That is expected; identity is confirmed by output below.
+          bb --version || true
+
+      - name: Build every circuit
+        run: |
+          # Circuits with their own acceptance tests re-build themselves many
+          # times; that belongs in a separate run, not in the artifact check.
+          for dir in coinbase-attestation coinbase-country-attestation \
+                     giwa-attestation oidc-domain-attestation zktls \
+                     mdl/kr-age mdl/kr-ownership mdl/kr-region; do
+            echo "::group::$dir"
+            SKIP_POST_BUILD=1 ./scripts/build.sh "$dir"
+            echo "::endgroup::"
+          done
+
+      - name: Publish digests for what the app downloads
+        run: ./scripts/write-digests.sh
+
+      - name: Fail if the committed artifacts are out of date
+        if: ${{ github.event_name == 'pull_request' || !inputs.commit_artifacts }}
+        run: |
+          if git diff --quiet; then
+            echo "Committed artifacts match a clean rebuild."
+            exit 0
+          fi
+          echo "::error::Committed circuit artifacts do not match a rebuild from source."
+          echo "Rebuild locally and commit the result:"
+          echo "  ./scripts/build.sh <circuit>   # for each changed circuit"
+          echo "  ./scripts/write-digests.sh"
+          echo
+          echo "What differs:"
+          git diff --stat
+          # Show the fields that differ rather than a wall of minified JSON, so
+          # a reader can tell a real circuit change from metadata churn.
+          for f in $(git diff --name-only -- '*/target/*.json' '*/*/target/*.json'); do
+            echo "::group::$f"
+            python3 - "$f" <<'PY'
+          import json, subprocess, sys
+          path = sys.argv[1]
+          old = json.loads(subprocess.run(['git','show',f'HEAD:{path}'],
+                                          capture_output=True, text=True).stdout)
+          new = json.load(open(path))
+          for key in sorted(set(old) | set(new)):
+              same = old.get(key) == new.get(key)
+              print(f"  {key:16} {'same' if same else 'DIFFERENT'}")
+          PY
+            echo "::endgroup::"
+          done
+          exit 1
+
+      - name: Commit the rebuilt artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.commit_artifacts }}
+        run: |
+          if git diff --quiet; then
+            echo "Nothing to commit — artifacts already match."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A '*/target' '*/*/target'
+          git commit -m "chore(circuits): rebuild artifacts with the pinned toolchain"
+          git push
+
+      - name: Keep the build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: circuit-artifacts
+          path: |
+            */target/*.json
+            */target/vk/vk
+            */target/*.sol
+            */target/SHA256SUMS
+            */target/vk/SHA256SUMS
+            mdl/*/target/*.json
+            mdl/*/target/vk/vk
+            mdl/*/target/*.sol
+            mdl/*/target/SHA256SUMS
+            mdl/*/target/vk/SHA256SUMS
+          if-no-files-found: error
