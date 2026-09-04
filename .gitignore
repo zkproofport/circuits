@@ -34,3 +34,6 @@ lib/
 mdl/kr-ownership/test-vectors/
 mdl/kr-age/test-vectors/
 mdl/kr-region/test-vectors/
+
+# Node dependencies for the helper scripts under scripts/ (see package.json).
+node_modules/

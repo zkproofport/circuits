@@ -1,0 +1,12 @@
+{
+  "name": "@zkproofport/circuits-scripts",
+  "private": true,
+  "description": "Node dependencies for the helper scripts under scripts/. The circuits themselves are Noir and Solidity and need none of this.",
+  "scripts": {
+    "giwa:list": "node scripts/giwa-poc/attest-account.js list",
+    "giwa:attest": "node scripts/giwa-poc/attest-account.js attest"
+  },
+  "dependencies": {
+    "ethers": "^6.16.0"
+  }
+}

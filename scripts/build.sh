@@ -39,8 +39,57 @@ echo "Building circuit: ${CIRCUIT_DIR_NAME}"
 echo "=================================================="
 echo ""
 
-BB_VERSION=$(bb --version)
+# THE bb VERSION IS CHECKED, NOT JUST PRINTED.
+#
+# This line used to only echo the version, and on 2026-09-03 at 01:21 — the same
+# minute bb 1.2.0 was installed on a machine — proofs for all three Korea Mobile
+# ID circuits were generated with it and committed. Nothing complained. The
+# mistake surfaced only on 2026-09-04, when the pinned bb refused those proofs
+# with "Conversion error here usually implies some bad proof serde or parsing".
+#
+# WHY NOTHING CAUGHT IT. The two versions produce the SAME verification key —
+# measured, byte for byte, on mdl/kr-age. So the key cannot tell you which bb
+# made a proof. The only visible difference is the proof itself: 16256 bytes
+# from the pinned build, 16224 from 1.2.0, for the identical circuit and
+# witness. A 32-byte difference in an opaque blob is not something anyone spots.
+#
+# The version string is therefore the only cheap signal, and printing it puts
+# the burden on a person reading scrollback. Refusing is what a script is for.
+#
+# BB_ALLOW_VERSION_MISMATCH=1 exists for deliberately measuring another build —
+# comparing output across versions is a legitimate thing to do. It is not a way
+# past a surprise: anything it produces must be treated as scratch.
+BB_EXPECTED_VERSION="1.0.0-nightly.20250723"
+BB_VERSION=$(bb --version 2>/dev/null || echo "not found")
 echo "bb CLI version: $BB_VERSION"
+echo "bb CLI path:    $(command -v bb || echo 'not on PATH')"
+
+if [ "$BB_VERSION" != "$BB_EXPECTED_VERSION" ]; then
+    # The pinned binary built from source prints all-zeroes rather than a
+    # version, because it skipped Aztec's release step. That is expected and
+    # documented in CLAUDE.md, so it is allowed through — but named here, so
+    # nobody reads it as a fault.
+    if [ "$BB_VERSION" = "00000000.00000000.00000000" ]; then
+        echo "  (all-zero version string: a bb built from source, which is the pinned one)"
+    elif [ "${BB_ALLOW_VERSION_MISMATCH:-0}" = "1" ]; then
+        echo "  [!] Version mismatch allowed by BB_ALLOW_VERSION_MISMATCH=1."
+        echo "      Whatever this produces is scratch. Do not commit it."
+    else
+        echo ""
+        echo "[FAIL] Wrong bb. Expected ${BB_EXPECTED_VERSION}, got ${BB_VERSION}."
+        echo ""
+        echo "  This matters even though the verification key would come out the"
+        echo "  same: the PROOF format differs, and the pinned bb rejects proofs"
+        echo "  another version made. That is how three circuits ended up with"
+        echo "  unverifiable proofs committed on 2026-09-03."
+        echo ""
+        echo "  Fix the PATH rather than the symptom:"
+        echo "    export PATH=\"\$HOME/.bb:\$PATH\"   # ~/.bb/bb links to the pinned build"
+        echo ""
+        echo "  To compare versions on purpose: BB_ALLOW_VERSION_MISMATCH=1"
+        exit 1
+    fi
+fi
 echo ""
 
 rm -f ./target/*.json ./target/*.sol
