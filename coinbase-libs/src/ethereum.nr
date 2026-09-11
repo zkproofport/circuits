@@ -55,3 +55,31 @@ pub fn create_eth_signed_message_hash(digest: [u8; 32]) -> [u8; 32] {
 
     keccak256(message, 60)
 }
+
+/// The EIP-712 digest: keccak256(0x19 0x01 ++ domainSeparator ++ structHash).
+///
+/// The other prefix in this file, `create_eth_signed_message_hash`, is EIP-191
+/// personal_sign -- what a wallet applies to a plain message. A wallet shows
+/// the user 32 opaque bytes for that one, which is fine while a proof only
+/// asserts identity and is not fine once it authorizes moving money.
+///
+/// EIP-712 asks the wallet for `eth_signTypedData_v4` instead, so the person
+/// sees named fields and their values before approving. The digest is a fixed
+/// 66 bytes no matter how large the signed structure is, because the action is
+/// already reduced to 32 bytes before it arrives here -- which is why this
+/// costs the circuit nothing over the 60-byte personal_sign prefix.
+///
+/// `domain_separator` carries the verifying contract and chain id, so a
+/// signature made for one contract cannot be presented to another.
+pub fn create_eip712_digest(domain_separator: [u8; 32], action_hash: [u8; 32]) -> [u8; 32] {
+    let mut message: [u8; 66] = [0; 66];
+    message[0] = 0x19;
+    message[1] = 0x01;
+    for i in 0..32 {
+        message[2 + i] = domain_separator[i];
+    }
+    for i in 0..32 {
+        message[34 + i] = action_hash[i];
+    }
+    keccak256(message, 66)
+}

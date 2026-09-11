@@ -91,15 +91,26 @@ jobs:
           # Circuits with their own acceptance tests re-build themselves many
           # times; that belongs in a separate run, not in the artifact check.
           for dir in coinbase-attestation coinbase-country-attestation \
-                     giwa-attestation oidc-domain-attestation zktls \
-                     mdl/kr-age mdl/kr-ownership mdl/kr-region; do
+                     arc-eligibility giwa-attestation oidc-domain-attestation \
+                     zktls mdl/kr-age mdl/kr-ownership mdl/kr-region; do
             echo "::group::$dir"
             SKIP_POST_BUILD=1 ./scripts/build.sh "$dir"
             echo "::endgroup::"
           done
 
+      - name: Fail if a shipped circuit is missing from the build list above
+        run: ./scripts/check-shipped-circuits.sh
+
       - name: Publish digests for what the app downloads
+        # Exits non-zero when a shipped circuit has no reference string, no
+        # verifying key, or no manifest. All three are required: without a .srs
+        # no device can prove, without a vk none can verify what it proved, and
+        # without a manifest the app checks the download by BYTE COUNT, which a
+        # file truncated at exactly the right length passes.
         run: ./scripts/write-digests.sh
+
+      - name: Refuse to publish an incomplete set
+        run: ./scripts/write-digests.sh --check
 
       - name: Fail if the committed artifacts are out of date
         if: ${{ github.event_name == 'pull_request' || !inputs.commit_artifacts }}

@@ -140,7 +140,7 @@ echo ""
 # nargo records the absolute path of every source file it read into the
 # compiled .json (`file_map[*].path`), so two checkouts of the same commit
 # produce byte-different artifacts purely because the accounts differ. The
-# committed files carry /Users/nhn/...; a rebuild anywhere else writes its own.
+# committed files carry $HOME/...; a rebuild anywhere else writes its own.
 # bytecode, abi, names and noir_version are identical — only file_map,
 # debug_symbols and hash move.
 #
@@ -219,6 +219,66 @@ VERIFIER_LINES=$(wc -l < "$VERIFIER_FILE")
 echo "Verifier generation complete: $VERIFIER_LINES lines"
 echo ""
 
+# ---------------------------------------------------------------------------
+# STEP 8: the reference string and the published digests.
+#
+# These are not optional extras. A device that cannot fetch a .srs cannot
+# prove; one that cannot fetch a vk cannot verify what it proved; and a
+# circuit file with no published digest is checked by BYTE COUNT alone on the
+# device, which is the weakness the digests exist to close.
+#
+# They used to be two separate commands somebody had to remember after every
+# build. `arc_eligibility` shipped its first proof with neither, and nothing
+# said so -- the build printed "Build complete" over the gap. So the build
+# does them, and fails if it cannot.
+# ---------------------------------------------------------------------------
+
+echo "8. Generating SRS (reference string)..."
+if [ -f "./target/${CIRCUIT_NAME}.srs" ]; then
+    echo "SRS already present: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
+else
+    # The generator lives in the monorepo, one level above this submodule. A
+    # standalone circuits checkout does not have it, and saying so beats a
+    # "no such file" from the shell.
+    SRS_TOOL="${CIRCUITS_DIR}/../scripts/generate_srs.sh"
+    if [ ! -x "$SRS_TOOL" ]; then
+        echo "Error: $SRS_TOOL not found." >&2
+        echo "  It lives in the parent monorepo; this looks like a standalone" >&2
+        echo "  circuits checkout, which cannot produce a reference string." >&2
+        exit 1
+    fi
+    if ! "$SRS_TOOL" "$CIRCUIT_DIR_NAME"; then
+        echo "Error: SRS generation failed for ${CIRCUIT_DIR_NAME}." >&2
+        echo "  Without it no device can prove this circuit, so this build is not" >&2
+        echo "  publishable. Fix the cause rather than skipping this step." >&2
+        exit 1
+    fi
+fi
+if [ ! -f "./target/${CIRCUIT_NAME}.srs" ]; then
+    echo "Error: generate_srs.sh reported success but ./target/${CIRCUIT_NAME}.srs" >&2
+    echo "  does not exist. Trusting an exit code over the artefact is how this" >&2
+    echo "  repository shipped a build with no reference string." >&2
+    exit 1
+fi
+echo "SRS ready: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
+echo ""
+
+echo "9. Publishing digests..."
+if ! "${SCRIPT_DIR}/write-digests.sh"; then
+    echo "Error: digest publication failed." >&2
+    echo "  The app verifies every downloaded file against these; without them it" >&2
+    echo "  falls back to comparing byte counts." >&2
+    exit 1
+fi
+for manifest in "./target/SHA256SUMS" "./target/vk/SHA256SUMS"; do
+    if [ ! -f "$manifest" ]; then
+        echo "Error: $manifest was not written." >&2
+        exit 1
+    fi
+done
+echo "Digests published"
+echo ""
+
 echo "=================================================="
 echo "Build complete: ${CIRCUIT_DIR_NAME}"
 echo "=================================================="
@@ -227,6 +287,8 @@ echo "Generated files in ${CIRCUIT_DIR}/target/:"
 echo "  - ${CIRCUIT_NAME}.json (circuit)"
 echo "  - vk/vk (verification key)"
 echo "  - ${VERIFIER_NAME}.sol ($VERIFIER_LINES lines)"
+echo "  - ${CIRCUIT_NAME}.srs ($(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes)"
+echo "  - SHA256SUMS, vk/SHA256SUMS (published digests)"
 if [ -f "./Prover.toml" ]; then
     echo "  - proof/ ($PROOF_SIZE bytes)"
     echo "    - witness.gz (private inputs)"
