@@ -40,8 +40,19 @@ CHECK=0
 # Only what the app actually downloads. Solidity sources, proofs and vk_hash
 # are not fetched by the app, so digesting them would invite a stale-manifest
 # failure for a file no device ever reads.
-DOWNLOADED_IN_TARGET='*.json *.srs'
-DOWNLOADED_IN_VK='vk'
+#
+# AN ARRAY, NOT A STRING. Written as `'*.json *.srs'` and iterated unquoted,
+# the shell expanded the glob in the SCRIPT'S OWN directory before splitting:
+# `circuits/` holds package.json and package-lock.json, so the loop ran over
+# `package-lock.json package.json *.srs` and the circuits' compiled json was
+# never digested. Every manifest ever written covered only the .srs, while the
+# header three lines up claimed it covered both -- and the app, finding no
+# digest for the json it downloads, fell back to comparing byte counts. That
+# fallback is the exact weakness these manifests exist to close. Found
+# 2026-09-09, by noticing the trace ran the outer loop three times for two
+# patterns.
+DOWNLOADED_IN_TARGET=('*.json' '*.srs')
+DOWNLOADED_IN_VK=('vk')
 
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -53,6 +64,27 @@ sha256_of() {
 
 status=0
 wrote=0
+missing=0
+
+# The directories the app downloads, from the customer SDK's own key-path
+# table. Reading it rather than repeating it means a circuit added there is
+# covered here without anyone remembering to add it twice.
+SDK_CIRCUITS="../proofport-app-sdk/dist/circuits.js"
+if [[ -f "$SDK_CIRCUITS" ]]; then
+  SHIPPED_DIRS="$(node -e '
+    const c = require(process.argv[1]);
+    console.log(Object.values(c.CIRCUIT_VK_PATHS)
+      .map(p => p.replace(/\/target\/vk\/vk$/, ""))
+      .join(" "));
+  ' "$(cd "$(dirname "$SDK_CIRCUITS")" && pwd)/$(basename "$SDK_CIRCUITS")" 2>/dev/null || true)"
+fi
+if [[ -z "${SHIPPED_DIRS:-}" ]]; then
+  echo "Cannot read the shipped circuit list from $SDK_CIRCUITS." >&2
+  echo "Build the customer SDK first:  npm --prefix ../proofport-app-sdk run build" >&2
+  echo "Refusing to guess which circuits ship." >&2
+  exit 1
+fi
+status=${status:-0}
 
 emit() {
   local dir="$1"; shift
@@ -101,15 +133,75 @@ for target in */target */*/target; do
   [[ "$target" == _archived-poc/* ]] && continue
 
   names=()
-  for pattern in $DOWNLOADED_IN_TARGET; do
+  for pattern in "${DOWNLOADED_IN_TARGET[@]}"; do
     for f in "$target"/$pattern; do
       [[ -f "$f" ]] && names+=("$(basename "$f")")
     done
   done
+  # A SHIPPED circuit that compiled but has no reference string or no verifying
+  # key is not deployable, and a manifest written over that gap publishes
+  # digests for an incomplete set -- which reads as "verified" to every reader.
+  # Refuse.
+  #
+  # Shipped means the app downloads it, which is decided by the customer SDK's
+  # key-path table, not by a list here. An earlier draft required the artefacts
+  # of every directory holding a compiled json and failed on coinbase-kyc and
+  # zktls -- circuits that exist, are not canonical ids, and no device ever
+  # fetches.
+  circuit_dir="${target%/target}"
+  if [[ " $SHIPPED_DIRS " == *" $circuit_dir "* ]]; then
+    stem=''
+    for f in "$target"/*.json; do
+      [[ -f "$f" ]] && stem="$(basename "$f" .json)" && break
+    done
+    if [[ ! -f "$target/$stem.srs" ]]; then
+      echo "MISSING ARTEFACT  $target/$stem.srs" >&2
+      echo "  Generate it:  ./scripts/generate_srs.sh $(dirname "$target")" >&2
+      status=1
+      missing=$((missing + 1))
+      continue
+    fi
+    if [[ ! -f "$target/vk/vk" ]]; then
+      echo "MISSING ARTEFACT  $target/vk/vk" >&2
+      echo "  Generate it:  ./scripts/build.sh $(dirname "$target")" >&2
+      status=1
+      missing=$((missing + 1))
+      continue
+    fi
+  fi
+
   (( ${#names[@]} )) && emit "$target" "${names[@]}"
 
-  [[ -d "$target/vk" ]] && emit "$target/vk" $DOWNLOADED_IN_VK
+  [[ -d "$target/vk" ]] && emit "$target/vk" "${DOWNLOADED_IN_VK[@]}"
 done
+
+# A shipped circuit whose manifests were never written is the same failure as a
+# missing key: the app finds no digest for the file it just downloaded and
+# falls back to comparing byte counts, which passes for a file truncated at
+# exactly the right length. --check has to say so, not report "ok" on the
+# circuits it happened to look at.
+if (( CHECK )); then
+  for dir in $SHIPPED_DIRS; do
+    for manifest in "$dir/target/SHA256SUMS" "$dir/target/vk/SHA256SUMS"; do
+      if [[ ! -f "$manifest" ]]; then
+        echo "MISSING MANIFEST  $manifest" >&2
+        echo "  Publish it:  ./scripts/write-digests.sh" >&2
+        status=1
+        missing=$((missing + 1))
+      fi
+    done
+  done
+fi
+
+if (( missing )); then
+  echo "" >&2
+  echo "$missing artefact(s) or manifest(s) are missing." >&2
+  echo "Deployment must not proceed: a device that cannot fetch a .srs cannot" >&2
+  echo "prove, one that cannot fetch a vk cannot verify what it proved, and one" >&2
+  echo "that finds no digest checks the file by BYTE COUNT -- which a file" >&2
+  echo "truncated at exactly the right length passes." >&2
+  exit 1
+fi
 
 if (( CHECK )); then
   (( status == 0 )) && echo "every manifest matches its files"

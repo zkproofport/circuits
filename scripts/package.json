@@ -1,0 +1,12 @@
+{
+  "name": "@zkproofport/circuits-scripts",
+  "private": true,
+  "description": "Node dependencies for the helper scripts in this directory. Kept HERE, not at the repository root: at the root its package.json and package-lock.json were the two files a '*.json' glob in write-digests.sh matched first, so no circuit's compiled json was ever digested. The circuits themselves are Noir and Solidity and need none of this.",
+  "scripts": {
+    "giwa:list": "node giwa-poc/attest-account.js list",
+    "giwa:attest": "node giwa-poc/attest-account.js attest"
+  },
+  "dependencies": {
+    "ethers": "^6.16.0"
+  }
+}
