@@ -69,6 +69,58 @@ Nullifier storage is application-specific. `NullifierRegistry` and `ZKProofportN
 
 ## Building
 
+### Ledger House staking demo on Arc Testnet
+
+[`src/LedgerHouseStaking.sol`](src/LedgerHouseStaking.sol) holds real testnet
+USDC deposits for the calling delegate. It offers no yield. The delegate can
+withdraw its own balance without another proof; no administrator can withdraw it.
+The token is Arc's six-decimal ERC-20 USDC interface at
+`0x3600000000000000000000000000000000000000`, on chain `5042002`.
+It uses the Arc eligibility verifier at
+`0xCbC8E63fF92659E8B44cFF117D33005Bb669a018`.
+The staking contract is deployed at
+[`0xD0F3eE648386B59B484157332E736388Fcc41F47`](https://testnet.arcscan.app/address/0xD0F3eE648386B59B484157332E736388Fcc41F47),
+in transaction
+[`0x92f07f307b0b597b4786ca2f9c816297ad3db63694874842a213709f88ae4ba7`](https://testnet.arcscan.app/tx/0x92f07f307b0b597b4786ca2f9c816297ad3db63694874842a213709f88ae4ba7).
+
+The signed EIP-712 domain is `Ledger House Staking`, version `1`, the current
+chain ID and **the staking contract's address**. The struct is
+`CredentialDelegation(address delegate,string action,uint256 amount,uint256 expiresAt,string nonce)`;
+`action` must be `stake`, and `amount` is in six-decimal token units. The
+constructor pins the accepted Coinbase signer Merkle root. `SCOPE` is
+`keccak256("ledger-house")`.
+
+`stake(amount, proof, publicInputs, expiresAt, nonce)` requires exactly 192
+byte-valued fields: signal at 0, domain at 32, action at 64, signer root at 96,
+scope at 128 and nullifier at 160. `stakePacked` accepts the same fields as
+6144 concatenated bytes (192 ABI words, without an array header), for wallet
+CLIs. Both entrypoints share validation and replay state. A nonempty nonce is
+limited to 128 bytes; a nonempty proof is limited to 65536 bytes. Deadlines
+must be strictly later than the current block timestamp. Reuse of a sender's
+nonce or an action hash is refused, including after withdrawal. A fresh signed
+action can reuse the credential's nullifier for a repeat demonstration.
+
+`balances(delegate)` reads the position. `withdraw(amount)` sends only to
+`msg.sender`. `Staked(delegate, amount, actionHash)` and
+`Withdrawn(delegate, amount)` describe completed token movements. Failed proof
+verification or token transfer rolls back balances and replay markers.
+
+With pinned Foundry **1.4.3**, run `forge test --match-contract LedgerHouseStakingTest`.
+The deployment entrypoint is `script/DeployLedgerHouseStaking.s.sol`; it reads
+`PRIVATE_KEY` and `LEDGER_HOUSE_SIGNER_ROOT` from the environment. Use Arc's
+RPC and execute a dry run before adding `--broadcast`:
+
+```bash
+forge script script/DeployLedgerHouseStaking.s.sol:DeployLedgerHouseStaking \
+  --rpc-url https://rpc.testnet.arc.io
+```
+
+The SDK `buildSignerMerkleTree(0)` root for the current four authorized signers
+is `0xb60da9815c76261b61a1e91f199de5845fc171a6500e57c4240d2ac61d85e2bf`.
+Recompute it from the SDK when the signer list changes; do not accept a root
+supplied by a proof. Foundry writes the deployment receipt under
+`broadcast/DeployLedgerHouseStaking.s.sol/5042002/run-latest.json`.
+
 The current generated artifacts were built with:
 
 - `nargo 1.0.0-beta.8`
