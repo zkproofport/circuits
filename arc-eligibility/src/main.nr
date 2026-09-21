@@ -29,10 +29,30 @@
 // recomputes the same two values and compares. That keeps the circuit generic:
 // nothing about vaults or USDC is baked in here.
 //
-// `signal_hash` stays a public input even though nobody signs it any more,
-// because the nullifier derives from it. Deriving the nullifier from the
-// signed action instead would give a different nullifier per action and
-// destroy the one-per-person property it exists for.
+// AN ACTION IS OPTIONAL, AND THE CIRCUIT IS WHAT MAKES IT SO
+//
+// This circuit used to require one: it computed the EIP-712 digest and nothing
+// else, so a request without an action built a vector 64 bytes short and the
+// prover died with a message naming none of it. The app's signing helper had
+// always been shaped for both, which is what made the requirement look like a
+// choice somebody had made rather than one nobody had.
+//
+// Now the mode is chosen from the inputs, by the same rule `giwa_attestation`
+// uses -- one definition, in coinbase_libs::signed_message. With an action the
+// wallet signs the typed data and `signal_hash` must be empty; without one it
+// personal_signs `signal_hash` and the EIP-712 pair must be empty.
+//
+// THE NULLIFIER NO LONGER COMES FROM signal_hash
+//
+// It could not survive the branch. `signal_hash` is zero in action mode, so a
+// nullifier derived from it would differ between the two modes -- the same
+// wallet, the same scope, two identities, which is the exact property the
+// nullifier exists to provide.
+//
+// It should not have survived anyway: nothing constrains `signal_hash`, and
+// in action mode nobody even signs it, so a prover wanting a second identity
+// only had to pass different bytes. The secret is now the address and a
+// constant compiled in below.
 
 use dep::std;
 use dep::keccak256::keccak256;
@@ -41,8 +61,18 @@ use dep::coinbase_libs::merkle;
 use dep::coinbase_libs::ethereum::{
     COINBASE_ATTESTER_CONTRACT,
     derive_address_from_pubkey,
-    create_eip712_digest,
 };
+use dep::coinbase_libs::nullifier::verify_wallet_nullifier;
+use dep::coinbase_libs::signed_message::signed_digest;
+
+/// keccak256("arc_eligibility"). Compiled in, never supplied: this is the half
+/// of the nullifier's secret preimage that used to be a free public input.
+global CIRCUIT_TAG: [u8; 32] = [
+    0x73, 0xf6, 0xd0, 0xaa, 0x36, 0xcd, 0xc2, 0x56,
+    0xe0, 0xda, 0x6a, 0xca, 0xda, 0x12, 0xb1, 0x54,
+    0x19, 0xb4, 0x23, 0xb3, 0x03, 0xac, 0x05, 0x25,
+    0x4c, 0xc7, 0x6d, 0x2c, 0xd8, 0x9d, 0x85, 0x1b,
+];
 
 // Function selector for "attestAccount(address)" -- 0x56feed5e
 global ATTEST_ACCOUNT_SELECTOR: [u8; 4] = [0x56, 0xfe, 0xed, 0x5e];
@@ -50,8 +80,8 @@ global ATTEST_ACCOUNT_SELECTOR: [u8; 4] = [0x56, 0xfe, 0xed, 0x5e];
 fn main(
     // ============ Public Inputs ============
 
-    // keccak256(address, scopeString, circuitName). Nobody signs this; the
-    // nullifier is derived from it, exactly as on Base.
+    // The dApp's challenge, signed with personal_sign when no action is
+    // bound. All zeros in action mode. NOT part of the nullifier.
     signal_hash: pub [u8; 32],
 
     // EIP-712 domain: hashStruct of name, version, chainId, verifyingContract.
@@ -71,7 +101,7 @@ fn main(
     // Sybil domain. One nullifier per (person, scope).
     scope: pub [u8; 32],
 
-    // keccak256(keccak256(user_address ++ signal_hash) ++ scope)
+    // keccak(keccak(user_address ++ CIRCUIT_TAG) ++ scope)
     nullifier: pub [u8; 32],
 
     // ============ Private Inputs ============
@@ -90,20 +120,20 @@ fn main(
     merkle_proof_depth: u32,
 ) {
     // ===================================================================
-    // PART 1: the KYC'd key authorized THIS action, on THIS contract
+    // PART 1: the KYC'd key signed THIS message -- an action, or the challenge
     // ===================================================================
 
     let derived_user_address = derive_address_from_pubkey(user_pubkey_x, user_pubkey_y);
     assert(derived_user_address == user_address, "User pubkey does not match address");
 
-    let message_hash = create_eip712_digest(domain_separator, action_hash);
+    let message_hash = signed_digest(signal_hash, domain_separator, action_hash);
     let valid_user_sig = std::ecdsa_secp256k1::verify_signature(
         user_pubkey_x,
         user_pubkey_y,
         user_signature,
         message_hash
     );
-    assert(valid_user_sig, "Invalid user signature on typed action");
+    assert(valid_user_sig, "Invalid user signature on the signed message");
 
     // ===================================================================
     // PART 2: the attestation transaction is real, and signed by an
@@ -160,8 +190,8 @@ fn main(
     assert(calldata_address == user_address, "Calldata address does not match user_address");
 
     // ===================================================================
-    // PART 4: one action per person per scope -- identical to Base
+    // PART 4: one nullifier per wallet per scope, with nothing to choose
     // ===================================================================
 
-    coinbase_libs::nullifier::verify_nullifier(user_address, signal_hash, scope, nullifier);
+    verify_wallet_nullifier(user_address, CIRCUIT_TAG, scope, nullifier);
 }

@@ -1,0 +1,7 @@
+{
+  "address": "0x2aeb66292f631ceb6225ffa2439b1f2b4b15e44a",
+  "network": "arc-testnet",
+  "chainId": 5042002,
+  "contract": "HonkVerifier",
+  "library": "0xD4A84AcCA4d9A94ec194a10226eC600fFF0939E7"
+}

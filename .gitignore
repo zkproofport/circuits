@@ -12,11 +12,18 @@
 
 # Private inputs (contains sensitive witness data)
 **/Prover.toml
+# The same thing under another name: giwa_attestation has two fixtures because
+# the circuit has two modes. Regenerate both with
+# scripts/giwa-poc/make-fixtures.sh.
+**/Prover.*.toml
 
 # Proof outputs (contains witness-derived data)
 **/target/proof/
 **/target/proof_out/
 **/target/*_witness.gz
+# `nargo execute <name>` writes <name>.gz, and the acceptance runs name theirs
+# witness_<case>, which the pattern above does not match.
+**/target/witness*.gz
 
 # Environment variables (contains sensitive keys)
 .env
@@ -34,6 +41,11 @@ lib/
 mdl/kr-ownership/test-vectors/
 mdl/kr-age/test-vectors/
 mdl/kr-region/test-vectors/
+
+# Acceptance fixtures and per-case logs, derived from the committed-nowhere
+# Prover fixtures on every run. Any circuit, not a list that goes stale: arc
+# grew a test-vectors/ the day after giwa did and the list had not moved.
+**/test-vectors/
 
 # Node dependencies for the helper scripts under scripts/ (see package.json).
 node_modules/

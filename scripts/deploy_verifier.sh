@@ -291,16 +291,78 @@ if [ "$NETWORK" == "mainnet" ] || [ "$NETWORK" == "base" ]; then
     [[ ! $REPLY =~ ^[Yy]$ ]] && exit 0
 fi
 
+# `|| FORGE_STATUS=$?` and not a bare call: on a Blockscout chain the explorer
+# verification runs AFTER the contract is already on chain and can fail on its
+# own ("Not all (0 / 1) contracts were verified!"). `set -e` would take the
+# script out at that point and skip the record below, leaving a deployed
+# verifier that nothing in the repository names. Measured on arc-testnet,
+# 2026-09-22.
+FORGE_STATUS=0
 forge script "$SCRIPT_FILE" \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" \
     --broadcast \
     --libraries "$SOL_FILE:ZKTranscriptLib:$LIB_ADDRESS" \
-    $VERIFY_FLAGS
+    $VERIFY_FLAGS || FORGE_STATUS=$?
+
+# RECORD THE ADDRESS, from the broadcast forge just wrote.
+#
+# The library had this and the verifiers did not, so deployments/<chain>/
+# held one hand-written verifier record that went stale the first time the
+# circuit was rebuilt. A stale verifier address does not fail: the old
+# contract is still deployed and still answers, about a circuit nobody runs.
+BROADCAST_FILE="broadcast/$(basename $SCRIPT_FILE)/$CHAIN_ID/run-latest.json"
+DEPLOYED_VERIFIER=""
+if [ -f "$BROADCAST_FILE" ]; then
+    DEPLOYED_VERIFIER=$(python3 -c "
+import json
+with open('$BROADCAST_FILE') as f:
+    txs = json.load(f)['transactions']
+hits = [t for t in txs if t.get('contractName') == 'HonkVerifier' and t.get('contractAddress')]
+print(hits[-1]['contractAddress'] if hits else '')
+" 2>/dev/null)
+fi
+
+if [ -n "$DEPLOYED_VERIFIER" ]; then
+    mkdir -p "$DEPLOYMENTS_DIR"
+    python3 -c "
+import json
+record = {
+    'address': '$DEPLOYED_VERIFIER',
+    'network': '$NETWORK',
+    'chainId': $CHAIN_ID,
+    'contract': 'HonkVerifier',
+    'library': '$LIB_ADDRESS',
+}
+with open('$DEPLOYMENTS_DIR/$DISPLAY_NAME.json', 'w') as f:
+    json.dump(record, f, indent=2)
+    f.write('\\n')
+"
+fi
+
+if [ "$FORGE_STATUS" -ne 0 ]; then
+    echo ""
+    if [ -n "$DEPLOYED_VERIFIER" ]; then
+        echo -e "${YELLOW}The contract IS deployed at $DEPLOYED_VERIFIER and recorded in${NC}"
+        echo -e "${YELLOW}$DEPLOYMENTS_DIR/$DISPLAY_NAME.json, but forge exited $FORGE_STATUS --${NC}"
+        echo -e "${YELLOW}usually explorer source verification, which changes nothing on chain.${NC}"
+        echo -e "${YELLOW}Check the output above before treating this as a failed deploy.${NC}"
+    else
+        echo -e "${RED}Deploy failed and no HonkVerifier address was recorded.${NC}"
+    fi
+    exit $FORGE_STATUS
+fi
+
+if [ -z "$DEPLOYED_VERIFIER" ]; then
+    echo -e "${RED}Error: deployed, but no HonkVerifier address in $BROADCAST_FILE${NC}"
+    exit 1
+fi
 
 echo ""
 echo -e "${GREEN}============================================================${NC}"
 echo -e "${GREEN} $DISPLAY_NAME deployed to $NETWORK${NC}"
 echo -e "${GREEN}============================================================${NC}"
-echo " Broadcast: broadcast/$(basename $SCRIPT_FILE)/$CHAIN_ID/run-latest.json"
-echo " Explorer: $EXPLORER"
+echo " Address:   $DEPLOYED_VERIFIER"
+echo " Recorded:  $DEPLOYMENTS_DIR/$DISPLAY_NAME.json"
+echo " Broadcast: $BROADCAST_FILE"
+echo " Explorer:  $EXPLORER"

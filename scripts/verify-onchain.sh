@@ -34,6 +34,10 @@ TARGET="$CIRCUIT_DIR_NAME/target"
 
 case "$NETWORK" in
   arc-testnet) RPC_URL="${ARC_TESTNET_RPC_URL:-https://rpc.testnet.arc.io}"; CHAIN_ID=5042002 ;;
+  # GIWA was missing here, which is the whole reason a GIWA-only copy of this
+  # check grew under scripts/giwa-poc/. One table, so the next circuit on a new
+  # chain adds a line instead of a script.
+  giwa-sepolia) RPC_URL="${GIWA_SEPOLIA_RPC_URL:-https://sepolia-rpc.giwa.io/}"; CHAIN_ID=91342 ;;
   base-sepolia) RPC_URL="${BASE_SEPOLIA_RPC_URL:-}"; CHAIN_ID=84532 ;;
   sepolia) RPC_URL="${SEPOLIA_RPC_URL:-}"; CHAIN_ID=11155111 ;;
   base) RPC_URL="${BASE_RPC_URL:-}"; CHAIN_ID=8453 ;;
