@@ -50,9 +50,9 @@ pub fn verify_nullifier(
 /// for the same wallet and the same scope just passes different bytes.
 ///
 /// In `coinbase_attestation` the wallet at least signs `signal_hash`, which is
-/// no barrier -- the signer is the prover -- but it is a constraint. In
-/// `arc_eligibility` the signature moved to the EIP-712 action and the value
-/// became a free public input that still decides the nullifier.
+/// no barrier -- the signer is the prover -- but it is a constraint. A circuit
+/// that signs an EIP-712 action instead leaves the value as a free public input
+/// that would still decide the nullifier.
 ///
 /// Here the second half is a constant compiled into the circuit. There is no
 /// input to choose, so the one-per-(wallet, scope) property holds by

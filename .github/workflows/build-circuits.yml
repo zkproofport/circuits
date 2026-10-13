@@ -91,7 +91,7 @@ jobs:
           # Circuits with their own acceptance tests re-build themselves many
           # times; that belongs in a separate run, not in the artifact check.
           for dir in coinbase-attestation coinbase-country-attestation \
-                     arc-eligibility giwa-attestation oidc-domain-attestation \
+                     giwa-attestation oidc-domain-attestation \
                      zktls mdl/kr-age mdl/kr-ownership mdl/kr-region; do
             echo "::group::$dir"
             SKIP_POST_BUILD=1 ./scripts/build.sh "$dir"

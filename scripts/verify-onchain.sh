@@ -3,7 +3,7 @@
 # Put a locally-generated proof in front of the DEPLOYED verifier contract.
 #
 #   ./scripts/verify-onchain.sh <circuit-dir> <network>
-#   ./scripts/verify-onchain.sh arc-eligibility arc-testnet
+#   ./scripts/verify-onchain.sh giwa-attestation giwa-sepolia
 #
 # `build.sh` already runs `bb verify` off-chain at step 6, so a proof that
 # reaches this script has been checked once. That check and this one are not
@@ -24,7 +24,7 @@ cd "$CIRCUITS_DIR"
 
 if [ $# -ne 2 ]; then
     echo "Usage: $0 <circuit-dir> <network>" >&2
-    echo "Example: $0 arc-eligibility arc-testnet" >&2
+    echo "Example: $0 giwa-attestation giwa-sepolia" >&2
     exit 1
 fi
 
@@ -33,7 +33,6 @@ NETWORK="$2"
 TARGET="$CIRCUIT_DIR_NAME/target"
 
 case "$NETWORK" in
-  arc-testnet) RPC_URL="${ARC_TESTNET_RPC_URL:-https://rpc.testnet.arc.io}"; CHAIN_ID=5042002 ;;
   # GIWA was missing here, which is the whole reason a GIWA-only copy of this
   # check grew under scripts/giwa-poc/. One table, so the next circuit on a new
   # chain adds a line instead of a script.

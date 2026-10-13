@@ -28,8 +28,8 @@ pub fn is_zero_32(v: [u8; 32]) -> bool {
 /// attestation. Zero bytes are what "absent" looks like here, because a
 /// circuit has no null.
 ///
-/// SHARED, not copied. `arc_eligibility` and `giwa_attestation` both branch
-/// this way; two copies of one rule is how the app, the SDK and the circuit
+/// SHARED, not copied. `giwa_attestation` branches this way, and any circuit
+/// that adds the same branch uses this function; two copies of one rule is how the app, the SDK and the circuit
 /// came to disagree about what a wallet had signed.
 pub fn signed_digest(
     signal_hash: [u8; 32],

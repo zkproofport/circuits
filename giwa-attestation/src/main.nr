@@ -21,9 +21,10 @@
 // A request may or may not carry an action. The app has always been shaped
 // that way -- one signing path that produces typed data when an action is
 // present and a personal_sign over signal_hash when it is not -- and the
-// circuit is what makes that real. `arc_eligibility` did NOT branch: it always
-// requires the EIP-712 signature, so a request without an action builds a
-// vector 64 bytes short and the prover dies with a message naming none of it.
+// circuit is what makes that real. A circuit that does NOT branch -- one that
+// always requires the EIP-712 signature -- turns a request without an action
+// into a vector 64 bytes short, and the prover dies with a message naming none
+// of it.
 //
 // There is no null in a circuit. Every public input is always present, so an
 // absent action is 32 zero bytes, and the two modes are made MUTUALLY
@@ -34,10 +35,10 @@
 //
 // WHAT signal_hash IS NOT ANY MORE
 //
-// It is not part of the nullifier. In `arc_eligibility` it is, which is the
-// defect this circuit does not copy: nobody signs it there and nothing
-// constrains it, so a prover wanting a second identity for the same wallet and
-// scope only had to pass different bytes. Here it is a dApp challenge and
+// It is not part of the nullifier. Deriving the nullifier from it is a defect
+// this circuit deliberately avoids: in action mode nobody signs signal_hash and
+// nothing constrains it, so a prover wanting a second identity for the same
+// wallet and scope would only have to pass different bytes. Here it is a dApp challenge and
 // nothing else. Replay protection for an action belongs in the signed
 // structure -- a nonce and an expiry the wallet displays and the verifying
 // contract records.

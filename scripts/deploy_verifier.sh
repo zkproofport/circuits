@@ -19,13 +19,12 @@ usage() {
     echo "  coinbase-attestation   Deploy CoinbaseAttestation verifier"
     echo "  coinbase-country-attestation   Deploy CoinbaseCountryAttestation verifier"
     echo "  oidc-domain-attestation        Deploy OidcDomainAttestation verifier"
-    echo "  arc-eligibility                Deploy ArcEligibility verifier (action-bound KYC)"
     echo "  giwa-attestation               Deploy GiwaAttestation verifier"
     echo "  mdl-kr-ownership               Deploy MdlKrOwnership (Korea Mobile ID — ownership)"
     echo "  mdl-kr-age                     Deploy MdlKrAge (Korea Mobile ID — age predicate)"
     echo "  mdl-kr-region                  Deploy MdlKrRegion (Korea Mobile ID — region predicate)"
     echo ""
-    echo "Networks: base-sepolia, sepolia, base, mainnet, arc-testnet"
+    echo "Networks: base-sepolia, sepolia, giwa-sepolia, base, mainnet"
     echo ""
     echo "Examples:"
     echo "  $0 lib base-sepolia"
@@ -45,7 +44,7 @@ NETWORK=$2
 cd "$CIRCUITS_DIR"
 
 case $NETWORK in
-    base-sepolia|sepolia|giwa-sepolia|arc-testnet)
+    base-sepolia|sepolia|giwa-sepolia)
         ENV_FILE=".env.development"
         ;;
     base|mainnet)
@@ -99,25 +98,6 @@ case $NETWORK in
         EXPLORER="https://etherscan.io"
         VERIFY_API_KEY="$ETHERSCAN_API_KEY"
         VERIFY_URL=""
-        ;;
-    arc-testnet)
-        # Circle's Arc. USDC is the gas token, so a deploying wallet needs USDC
-        # here rather than ETH -- faucet.circle.com. Chain id and RPC are from
-        # docs.arc.io/arc/references/connect-to-arc; public mainnet is
-        # 2026-09-16 and its chain id is not published by Circle yet, so only
-        # the testnet is listed. The explorer is Blockscout-shaped, with no
-        # Etherscan-style verification endpoint, which is why both verify
-        # values are empty below.
-        RPC_URL="${ARC_TESTNET_RPC_URL:-https://rpc.testnet.arc.io}"
-        CHAIN_ID=5042002
-        EXPLORER="https://testnet.arcscan.app"
-        # Blockscout, not Etherscan: it takes no API key and wants its own
-        # --verifier flag. Passing --etherscan-api-key here makes forge post to
-        # Etherscan's endpoint for a chain Etherscan does not index, which
-        # fails after the deploy has already succeeded.
-        VERIFIER="blockscout"
-        VERIFY_API_KEY=""
-        VERIFY_URL="https://testnet.arcscan.app/api"
         ;;
     giwa-sepolia)
         RPC_URL="$GIWA_SEPOLIA_RPC_URL"
@@ -230,11 +210,6 @@ case $COMMAND in
         SCRIPT_FILE="script/DeployCoinbaseCountryAttestation.s.sol"
         DISPLAY_NAME="CoinbaseCountryAttestation"
         ;;
-    arc-eligibility)
-        SOL_FILE="arc-eligibility/target/ArcEligibility.sol"
-        SCRIPT_FILE="script/DeployArcEligibility.s.sol"
-        DISPLAY_NAME="ArcEligibility"
-        ;;
     oidc-domain-attestation)
         SOL_FILE="oidc-domain-attestation/target/OidcDomainAttestation.sol"
         SCRIPT_FILE="script/DeployOidcDomainAttestation.s.sol"
@@ -295,8 +270,8 @@ fi
 # verification runs AFTER the contract is already on chain and can fail on its
 # own ("Not all (0 / 1) contracts were verified!"). `set -e` would take the
 # script out at that point and skip the record below, leaving a deployed
-# verifier that nothing in the repository names. Measured on arc-testnet,
-# 2026-09-22.
+# verifier that nothing in the repository names. Measured on a Blockscout
+# testnet, 2026-09-22.
 FORGE_STATUS=0
 forge script "$SCRIPT_FILE" \
     --rpc-url "$RPC_URL" \

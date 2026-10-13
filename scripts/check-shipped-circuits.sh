@@ -2,7 +2,7 @@
 #
 # Every circuit the app downloads must be in the build workflow's loop.
 #
-# The loop is typed out, and a typed-out list is how arc_eligibility came to be
+# The loop is typed out, and a typed-out list is how a circuit once came to be
 # built locally, published in the customer SDK's key-path table, and never
 # built in CI -- which stayed green while the artefact it publishes did not
 # exist. This compares the two.

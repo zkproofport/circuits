@@ -228,7 +228,7 @@ echo ""
 # device, which is the weakness the digests exist to close.
 #
 # They used to be two separate commands somebody had to remember after every
-# build. `arc_eligibility` shipped its first proof with neither, and nothing
+# build. A circuit once shipped its first proof with neither, and nothing
 # said so -- the build printed "Build complete" over the gap. So the build
 # does them, and fails if it cannot.
 # ---------------------------------------------------------------------------
