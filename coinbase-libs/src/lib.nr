@@ -4,3 +4,4 @@ pub mod eip1559_tx_parser;
 pub mod ethereum;
 pub mod nullifier;
 pub mod signed_message;
+pub mod signed_tx;

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Acceptance run for a circuit that signs an EIP-712 action OR a signal hash.
 #
-# `giwa_attestation` works this way. The run takes the circuit directory rather
+# `giwa_attestation` and `dojang_playground` work this way. The run takes the circuit directory rather
 # than assuming GIWA, so the next circuit with the same branch reuses it instead
 # of growing a second copy -- two copies of an acceptance run is how two
 # circuits come to be checked to different standards.
@@ -54,6 +54,10 @@ case "$CIRCUIT_REL" in
         REGEN="$SCRIPT_DIR/giwa-poc/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/.env.development"
         ;;
+    dojang-playground)
+        REGEN="$SCRIPT_DIR/dojang-playground/make-fixtures.sh"
+        REGEN_NEEDS="$CIRCUITS_ROOT/.env.development"
+        ;;
     *)
         echo "No fixture recipe for $CIRCUIT_REL. Add one here rather than running it by hand."
         exit 1
@@ -65,7 +69,8 @@ mkdir -p "$VECTORS"
 
 # Prover.toml is gitignored repo-wide, so a fresh checkout has no fixtures.
 # Rebuild them rather than reporting a failure that is really a missing file.
-if [ ! -f Prover.toml ] || [ ! -f Prover.no-action.toml ]; then
+if [ ! -f Prover.toml ] || [ ! -f Prover.no-action.toml ] \
+   || { [ "$CIRCUIT_REL" = dojang-playground ] && [ ! -f "$VECTORS/tx_other_signer.toml" ]; }; then
   if [ -f "$REGEN_NEEDS" ]; then
     echo "  fixtures missing -- regenerating"
     $REGEN > "$VECTORS/regenerate.log" 2>&1 || {
@@ -143,8 +148,27 @@ node "$TAMPER" Prover.toml "$VECTORS/wrong_nullifier.toml" fill nullifier > /dev
 node "$TAMPER" Prover.no-action.toml "$VECTORS/signature_from_other_message.toml" copy user_signature Prover.toml > /dev/null \
   && refuse "signature_from_other_message" "test-vectors/signature_from_other_message" "Invalid user signature"
 
-node "$TAMPER" Prover.toml "$VECTORS/wrong_signer_root.toml" fill signer_list_merkle_root > /dev/null \
-  && refuse "wrong_signer_root" "test-vectors/wrong_signer_root" "Signer not in valid list"
+case "$CIRCUIT_REL" in
+  giwa-attestation)
+    node "$TAMPER" Prover.toml "$VECTORS/wrong_signer_root.toml" fill signer_list_merkle_root > /dev/null \
+      && refuse "wrong_signer_root" "test-vectors/wrong_signer_root" "Signer not in valid list"
+    ;;
+  dojang-playground)
+    # The issuance is signed by the user, so each of these is a transaction a
+    # dishonest prover could sign for themselves without sending it.
+    refuse "tx_other_signer"      "test-vectors/tx_other_signer"      "Issuance transaction was not signed by this wallet"
+    refuse "tx_wrong_contract"    "test-vectors/tx_wrong_contract"    "Transaction is not to the Playground faucet"
+    refuse "tx_wrong_selector"    "test-vectors/tx_wrong_selector"    "Transaction does not call payAndIssueEAS()"
+    refuse "tx_extra_calldata"    "test-vectors/tx_extra_calldata"    "Calldata is not a bare payAndIssueEAS() call"
+    refuse "tx_wrong_chain"       "test-vectors/tx_wrong_chain"       "Transaction is for another chain"
+    refuse "tx_no_chain"          "test-vectors/tx_no_chain"          "Legacy transaction is not EIP-155 for this chain"
+    refuse "tx_type_1"            "test-vectors/tx_type_1"            "Unsupported transaction type"
+    refuse "tx_length_overstated" "test-vectors/tx_length_overstated" "tx_length does not match the RLP list"
+    echo ""
+    echo "Accepted (RLP dropped a leading zero from r or s):"
+    accept "short_scalar" "test-vectors/short_scalar"
+    ;;
+esac
 
 # The real proof, end to end, for the mode that is new.
 echo ""

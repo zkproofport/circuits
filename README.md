@@ -14,6 +14,8 @@ This repository contains executable circuit code, shared Noir libraries, generat
 | CIP-4 | [GIWA Dojang Verified Address Proof](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-4.md) | [`giwa-attestation`](giwa-attestation) | PoC |
 | CIP-5 | [Korean Mobile ID Selective Disclosure Profile](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-5.md) | [`mdl/kr-*`](mdl) | Experimental |
 
+[`dojang-playground`](dojang-playground) is a GIWA Sepolia demo circuit outside the CIP mapping.
+
 `coinbase-libs` is a shared implementation library. `coinbase-kyc` is an older reference-only circuit. `_archived-poc` and `zktls` are outside the current credential CIP mapping.
 
 ## Implemented circuits
@@ -36,6 +38,10 @@ Provider key authorization, JWT freshness, issuer, audience, and nonce policy ar
 
 GIWA Sepolia proof flow using a test `MockGiwaAttester`, mobile-compatible UltraHonk proof generation, and an EVM verifier. Production Dojang issuer and schema parameters remain unresolved.
 
+### Dojang Playground — Demo
+
+Proves that a wallet signed the request and that the same key signed a GIWA Sepolia `payAndIssueEAS()` call to the Playground faucet (`0x63CCe2b569A7bC35895ee24306c1512fefc06121`), the call that issues a Dojang attestation to its sender. Legacy (EIP-155) and EIP-1559 transactions are both accepted. The issuance is self-signed, so there is no issuer check and no inclusion check; the circuit demonstrates the flow.
+
 ### Korean Mobile ID predicates — Experimental
 
 Three circuits under `mdl/` implement ownership/selective field commitment, year-based age threshold, and region-token predicates. They share `keccak256(keccak256(ci) || scope)` nullifiers.
@@ -44,7 +50,7 @@ The active circuits do not yet cryptographically authenticate claims against a c
 
 ## Shared nullifier schemes
 
-### Coinbase and GIWA transaction profiles
+### Coinbase transaction profiles
 
 ```text
 user_secret = keccak256(user_address || signal_hash)
@@ -52,6 +58,15 @@ nullifier   = keccak256(user_secret || scope)
 ```
 
 Duplicate-detection behavior depends on both `signal_hash` and `scope` remaining stable for the relevant action.
+
+### GIWA and Dojang Playground
+
+```text
+user_secret = keccak256(user_address || keccak256(circuit_name))
+nullifier   = keccak256(user_secret || scope)
+```
+
+The circuit name is compiled in, so one wallet has one nullifier per scope and per circuit.
 
 ### OIDC domain profile
 
