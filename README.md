@@ -145,7 +145,8 @@ The tables below are synchronized with `broadcast/**/run-latest.json` at revisio
 
 | Circuit | Verifier | Deployment record |
 |---|---|---|
-| GIWA attestation PoC | `0xeb9eb5452790cfe549ff83ceb3dbe1c432231492` | [`DeployGiwaAttestation`](broadcast/DeployGiwaAttestation.s.sol/91342/run-latest.json) |
+| GIWA attestation PoC | `0x5da234546874304f8c51bbeed00fc632938211c1` | [`DeployGiwaAttestation`](broadcast/DeployGiwaAttestation.s.sol/91342/run-latest.json) |
+| Dojang Playground | `0x2d01c2fe3445b7dde60118f956bb14e84fd64724` | [`DeployDojangPlayground`](broadcast/DeployDojangPlayground.s.sol/91342/run-latest.json) |
 
 ## Deploying verifiers
 

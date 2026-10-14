@@ -20,6 +20,7 @@ usage() {
     echo "  coinbase-country-attestation   Deploy CoinbaseCountryAttestation verifier"
     echo "  oidc-domain-attestation        Deploy OidcDomainAttestation verifier"
     echo "  giwa-attestation               Deploy GiwaAttestation verifier"
+    echo "  dojang-playground              Deploy DojangPlayground verifier"
     echo "  mdl-kr-ownership               Deploy MdlKrOwnership (Korea Mobile ID — ownership)"
     echo "  mdl-kr-age                     Deploy MdlKrAge (Korea Mobile ID — age predicate)"
     echo "  mdl-kr-region                  Deploy MdlKrRegion (Korea Mobile ID — region predicate)"
@@ -219,6 +220,11 @@ case $COMMAND in
         SOL_FILE="giwa-attestation/target/GiwaAttestation.sol"
         SCRIPT_FILE="script/DeployGiwaAttestation.s.sol"
         DISPLAY_NAME="GiwaAttestation"
+        ;;
+    dojang-playground)
+        SOL_FILE="dojang-playground/target/DojangPlayground.sol"
+        SCRIPT_FILE="script/DeployDojangPlayground.s.sol"
+        DISPLAY_NAME="DojangPlayground"
         ;;
     mdl-kr-ownership)
         SOL_FILE="mdl/kr-ownership/target/MdlKrOwnership.sol"
