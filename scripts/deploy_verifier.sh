@@ -164,17 +164,26 @@ if [ "$COMMAND" == "lib" ]; then
         [[ ! $REPLY =~ ^[Yy]$ ]] && exit 0
     fi
 
+    # `|| LIB_STATUS=$?`: with `set -e` a failed explorer verification ended
+    # the script after the library was already on chain and before it was
+    # recorded, so the retry deployed a second one (Base mainnet, 2026-10-23).
+    LIB_STATUS=0
     OUTPUT=$(forge create "$SOL_FILE:ZKTranscriptLib" \
         --rpc-url "$RPC_URL" \
         --private-key "$PRIVATE_KEY" \
         --broadcast \
-        $VERIFY_FLAGS 2>&1)
+        $VERIFY_FLAGS 2>&1) || LIB_STATUS=$?
 
     echo "$OUTPUT"
 
     DEPLOYED_ADDR=$(echo "$OUTPUT" | awk '/Deployed to:/ {print $3; exit}')
     if [ -z "$DEPLOYED_ADDR" ]; then
-        echo -e "${RED}Error: Failed to parse deployed address${NC}"
+        echo -e "${RED}Error: no 'Deployed to:' line; forge exited $LIB_STATUS${NC}"
+        exit 1
+    fi
+    LIB_CODE=$(cast code "$DEPLOYED_ADDR" --rpc-url "$RPC_URL" 2>/dev/null)
+    if [ -z "$LIB_CODE" ] || [ "$LIB_CODE" = "0x" ]; then
+        echo -e "${RED}Error: no code at $DEPLOYED_ADDR; the library was not created${NC}"
         exit 1
     fi
 
@@ -197,6 +206,10 @@ with open('$DEPLOYMENTS_DIR/ZKTranscriptLib.json', 'w') as f:
     echo -e "${GREEN} Address: $DEPLOYED_ADDR${NC}"
     echo -e "${GREEN} Saved to: $DEPLOYMENTS_DIR/ZKTranscriptLib.json${NC}"
     echo -e "${GREEN}============================================================${NC}"
+    if [ "$LIB_STATUS" -ne 0 ]; then
+        echo -e "${YELLOW}Deployed and recorded, but forge exited $LIB_STATUS (usually explorer verification). Check the output above.${NC}"
+        exit "$LIB_STATUS"
+    fi
     exit 0
 fi
 
@@ -285,6 +298,12 @@ BROADCAST_FILE="broadcast/$(basename $SCRIPT_FILE)/$CHAIN_ID/run-latest.json"
 # run-latest.json left by the September deploy was read back as this run's
 # result: the old address was re-recorded beside the new library and reported
 # as "IS deployed".
+#
+# --skip-simulation: gas is estimated by the chain's own node, not by forge's
+# local EVM. Since Glamsterdam reached Ethereum Sepolia (EIP-8037: code deposit
+# 200 -> 1530 gas per byte), forge 1.4.3 under-estimated a 24 KB verifier by
+# about 7x and every deploy ran out of gas (2026-10-23; drpc trace: "out of
+# gas", stateGasUsed present). The node knows its own fork rules.
 RUN_MARKER=$(mktemp)
 trap 'rm -f "$RUN_MARKER"' EXIT
 sleep 1
@@ -293,6 +312,8 @@ forge script "$SCRIPT_FILE" \
     --private-key "$PRIVATE_KEY" \
     --broadcast \
     --libraries "$SOL_FILE:ZKTranscriptLib:$LIB_ADDRESS" \
+    --skip-simulation \
+    --gas-estimate-multiplier "${GAS_ESTIMATE_MULTIPLIER:-130}" \
     $VERIFY_FLAGS || FORGE_STATUS=$?
 
 # RECORD THE ADDRESS, from the broadcast forge just wrote.
@@ -310,6 +331,18 @@ with open('$BROADCAST_FILE') as f:
 hits = [t for t in txs if t.get('contractName') == 'HonkVerifier' and t.get('contractAddress')]
 print(hits[-1]['contractAddress'] if hits else '')
 " 2>/dev/null)
+fi
+# A broadcast records the address a CREATE was aimed at, mined or not. On
+# 2026-10-22 three Ethereum Sepolia deploys ran out of gas (gas used == the
+# estimated limit, status 0) and each was reported "IS deployed" at an address
+# with no code. Only an address that now holds code counts.
+if [ -n "$DEPLOYED_VERIFIER" ]; then
+    CODE=$(cast code "$DEPLOYED_VERIFIER" --rpc-url "$RPC_URL" 2>/dev/null)
+    if [ -z "$CODE" ] || [ "$CODE" = "0x" ]; then
+        echo -e "${RED}No code at $DEPLOYED_VERIFIER: the deploy transaction did not create the contract.${NC}"
+        DEPLOYED_VERIFIER=""
+        [ "$FORGE_STATUS" -ne 0 ] || FORGE_STATUS=1
+    fi
 fi
 
 if [ -n "$DEPLOYED_VERIFIER" ]; then
