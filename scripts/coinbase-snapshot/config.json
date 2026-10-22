@@ -1,0 +1,12 @@
+{
+  "_comment": "Which attestations count, and how often a root is published. The first block of fields is the RULE: changing any of them changes every root, so treat a change as a new snapshot series. The second block is OPERATIONS and may be tuned freely; see README.md for how 30 minutes was chosen.",
+  "chainId": 8453,
+  "eas": "0x4200000000000000000000000000000000000021",
+  "schema": "0xf8b05c79f090979bf4a80270aba232dff11a10d9ca55c4f88de95317970f0de9",
+  "attester": "0x357458739F90461b99789350868CD7CF330Dd7EE",
+  "treeDepth": 20,
+
+  "basisBlockTag": "finalized",
+  "intervalBlocks": 900,
+  "acceptedRoots": 2
+}

@@ -1,0 +1,3 @@
+# Prototype build output and snapshots (tens of MB, rebuilt by scripts/coinbase-snapshot).
+target/
+snapshots/

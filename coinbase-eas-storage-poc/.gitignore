@@ -1,0 +1,2 @@
+# Prototype: build output is reproducible and not shipped (the SRS alone is 128 MB).
+target/

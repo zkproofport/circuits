@@ -1,0 +1,8 @@
+[package]
+name = "eth_mpt"
+type = "lib"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+keccak256 = { path = "../keccak256" }

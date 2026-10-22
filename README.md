@@ -16,6 +16,10 @@ This repository contains executable circuit code, shared Noir libraries, generat
 
 [`dojang-playground`](dojang-playground) is a GIWA Sepolia demo circuit outside the CIP mapping.
 
+[`coinbase-eas-storage-poc`](coinbase-eas-storage-poc) is a prototype, not deployed: Coinbase KYC proven from EAS storage, so a revoked attestation is refused. It uses the trie-proof library in [`deps/eth-mpt`](deps/eth-mpt).
+
+[`coinbase-snapshot-poc`](coinbase-snapshot-poc) is a prototype, not deployed: Coinbase KYC proven as membership in a published snapshot tree, built by an open rule in [`scripts/coinbase-snapshot`](scripts/coinbase-snapshot); recent roots are recorded by [`src/SnapshotRootRegistry.sol`](src/SnapshotRootRegistry.sol).
+
 `coinbase-libs` is a shared implementation library. `coinbase-kyc` is an older reference-only circuit. `_archived-poc` and `zktls` are outside the current credential CIP mapping.
 
 ## Implemented circuits

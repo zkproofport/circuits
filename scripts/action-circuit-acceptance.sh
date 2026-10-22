@@ -58,6 +58,14 @@ case "$CIRCUIT_REL" in
         REGEN="$SCRIPT_DIR/dojang-playground/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/.env.development"
         ;;
+    coinbase-eas-storage-poc)
+        REGEN="$SCRIPT_DIR/coinbase-eas-storage-poc/make-fixtures.sh"
+        REGEN_NEEDS="$CIRCUITS_ROOT/.env.production"
+        ;;
+    coinbase-snapshot-poc)
+        REGEN="$SCRIPT_DIR/coinbase-snapshot/make-fixtures.sh"
+        REGEN_NEEDS="$CIRCUITS_ROOT/.env.production"
+        ;;
     *)
         echo "No fixture recipe for $CIRCUIT_REL. Add one here rather than running it by hand."
         exit 1
@@ -167,6 +175,20 @@ case "$CIRCUIT_REL" in
     echo ""
     echo "Accepted (RLP dropped a leading zero from r or s):"
     accept "short_scalar" "test-vectors/short_scalar"
+    ;;
+  coinbase-eas-storage-poc)
+    # The storage root is public: one from any other state must not verify.
+    node "$TAMPER" Prover.toml "$VECTORS/wrong_storage_root.toml" fill eas_storage_root > /dev/null \
+      && refuse "wrong_storage_root" "test-vectors/wrong_storage_root" "Invalid node hash"
+    # A refUID the record does not have makes a different uid, so a different
+    # slot: the real proof no longer leads there.
+    node "$TAMPER" Prover.toml "$VECTORS/other_attestation.toml" fill attestation_ref_uid > /dev/null \
+      && refuse "other_attestation" "test-vectors/other_attestation" "Invalid node hash"
+    ;;
+  coinbase-snapshot-poc)
+    # A wallet outside the set, holding a member's path: what a revoked wallet
+    # has once a root without it is published.
+    refuse "not_member" "test-vectors/not_member" "Wallet is not in the snapshot"
     ;;
 esac
 

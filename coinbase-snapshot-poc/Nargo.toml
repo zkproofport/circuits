@@ -1,0 +1,10 @@
+[package]
+name = "coinbase_snapshot_poc"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+keccak256 = { path = "../deps/keccak256" }
+poseidon = { path = "../deps/poseidon" }
+coinbase_libs = { path = "../coinbase-libs" }
