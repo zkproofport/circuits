@@ -19,7 +19,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CIRCUITS_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW="$CIRCUITS_DIR/.github/workflows/build-circuits.yml"
-SDK="$CIRCUITS_DIR/../proofport-app-sdk/dist/circuits.js"
+# The SDK's circuit table: the monorepo's build by default, or a file named by
+# SDK_CIRCUITS_JS (CI unpacks the published package, having no monorepo).
+SDK="${SDK_CIRCUITS_JS:-$CIRCUITS_DIR/../proofport-app-sdk/dist/circuits.js}"
 
 if [[ ! -f "$WORKFLOW" ]]; then
   echo "Workflow not found: $WORKFLOW" >&2

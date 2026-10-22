@@ -53,20 +53,35 @@ jobs:
           echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.bb" >> "$GITHUB_PATH"
 
+      # build.sh writes each circuit's SRS with noir-rs's srs_downloader
+      # (scripts/generate_srs.sh), a Rust build of several minutes; keep the
+      # clone and its target between runs, keyed by the pinned noir-rs tag.
+      - name: Cache the noir-rs SRS tool
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/noir-rs-tags
+          key: noir-rs-srs-${{ hashFiles('toolchain.env') }}
+
       - name: Build every circuit
         run: |
           # Circuits with their own acceptance tests re-build themselves many
           # times; that belongs in a separate run, not in the artifact check.
           for dir in coinbase-attestation coinbase-country-attestation \
-                     giwa-attestation oidc-domain-attestation \
+                     giwa-attestation dojang-playground oidc-domain-attestation \
                      zktls mdl/kr-age mdl/kr-ownership mdl/kr-region; do
             echo "::group::$dir"
             SKIP_POST_BUILD=1 ./scripts/build.sh "$dir"
             echo "::endgroup::"
           done
 
+      # The shipped list comes from the customer SDK. This repository is
+      # checked out alone here, so read the SDK as customers get it: from npm.
       - name: Fail if a shipped circuit is missing from the build list above
-        run: ./scripts/check-shipped-circuits.sh
+        run: |
+          sdk=$(mktemp -d)
+          npm pack @zkproofport-app/sdk --pack-destination "$sdk" >/dev/null
+          tar -xzf "$sdk"/*.tgz -C "$sdk"
+          SDK_CIRCUITS_JS="$sdk/package/dist/circuits.js" ./scripts/check-shipped-circuits.sh
 
       - name: Publish digests for what the app downloads
         # Exits non-zero when a shipped circuit has no reference string, no

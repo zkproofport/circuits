@@ -240,16 +240,7 @@ fi
 if [ -f "./target/${CIRCUIT_NAME}.srs" ]; then
     echo "SRS already present: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
 else
-    # The generator lives in the monorepo, one level above this submodule. A
-    # standalone circuits checkout does not have it, and saying so beats a
-    # "no such file" from the shell.
-    SRS_TOOL="${CIRCUITS_DIR}/../scripts/generate_srs.sh"
-    if [ ! -x "$SRS_TOOL" ]; then
-        echo "Error: $SRS_TOOL not found." >&2
-        echo "  It lives in the parent monorepo; this looks like a standalone" >&2
-        echo "  circuits checkout, which cannot produce a reference string." >&2
-        exit 1
-    fi
+    SRS_TOOL="${SCRIPT_DIR}/generate_srs.sh"
     # The generator takes the path under circuits/ (mdl/kr-age), not the bare
     # folder name: given "kr-age" it looks for circuits/kr-age and fails. That
     # stayed hidden while every circuit already had a .srs to reuse.
