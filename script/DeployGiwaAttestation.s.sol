@@ -6,7 +6,9 @@ import {HonkVerifier} from "../giwa-attestation/target/GiwaAttestation.sol";
 
 contract DeployGiwaAttestation is Script {
     function run() external {
-        vm.startBroadcast();
+        // The key comes from the environment, never the command line, where any
+        // process listing shows it (deploy_verifier.sh exports PRIVATE_KEY).
+        vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         HonkVerifier verifier = new HonkVerifier();
         console.log("GiwaAttestation HonkVerifier:", address(verifier));
         vm.stopBroadcast();

@@ -66,6 +66,10 @@ else
     exit 1
 fi
 
+# Read by the forge scripts (vm.envUint), never passed as a command-line flag:
+# a flag shows in every process listing, and on 2026-10-23 one `ps` printed
+# the mainnet deployer key into a session transcript.
+export PRIVATE_KEY
 if [ -z "$PRIVATE_KEY" ]; then
     echo -e "${RED}Error: PRIVATE_KEY not set in $ENV_FILE${NC}"
     exit 1
@@ -168,17 +172,27 @@ if [ "$COMMAND" == "lib" ]; then
     # the script after the library was already on chain and before it was
     # recorded, so the retry deployed a second one (Base mainnet, 2026-10-23).
     LIB_STATUS=0
-    OUTPUT=$(forge create "$SOL_FILE:ZKTranscriptLib" \
+    LIB_BROADCAST="broadcast/DeployTranscriptLib.s.sol/$CHAIN_ID/run-latest.json"
+    LIB_MARKER=$(mktemp)
+    sleep 1
+    forge script script/DeployTranscriptLib.s.sol \
         --rpc-url "$RPC_URL" \
-        --private-key "$PRIVATE_KEY" \
         --broadcast \
-        $VERIFY_FLAGS 2>&1) || LIB_STATUS=$?
+        --skip-simulation \
+        $VERIFY_FLAGS || LIB_STATUS=$?
 
-    echo "$OUTPUT"
-
-    DEPLOYED_ADDR=$(echo "$OUTPUT" | awk '/Deployed to:/ {print $3; exit}')
+    DEPLOYED_ADDR=""
+    if [ -f "$LIB_BROADCAST" ] && [ "$LIB_BROADCAST" -nt "$LIB_MARKER" ]; then
+        DEPLOYED_ADDR=$(python3 -c "
+import json
+txs = json.load(open('$LIB_BROADCAST'))['transactions']
+hits = [t['contractAddress'] for t in txs if t.get('contractAddress')]
+print(hits[-1] if hits else '')
+" 2>/dev/null)
+    fi
+    rm -f "$LIB_MARKER"
     if [ -z "$DEPLOYED_ADDR" ]; then
-        echo -e "${RED}Error: no 'Deployed to:' line; forge exited $LIB_STATUS${NC}"
+        echo -e "${RED}Error: no library address in a broadcast from this run; forge exited $LIB_STATUS${NC}"
         exit 1
     fi
     LIB_CODE=$(cast code "$DEPLOYED_ADDR" --rpc-url "$RPC_URL" 2>/dev/null)
@@ -309,7 +323,6 @@ trap 'rm -f "$RUN_MARKER"' EXIT
 sleep 1
 forge script "$SCRIPT_FILE" \
     --rpc-url "$RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
     --broadcast \
     --libraries "$SOL_FILE:ZKTranscriptLib:$LIB_ADDRESS" \
     --skip-simulation \
