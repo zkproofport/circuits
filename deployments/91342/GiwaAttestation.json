@@ -1,7 +1,7 @@
 {
-  "address": "0x5da234546874304f8c51bbeed00fc632938211c1",
+  "address": "0xf6edb9d6114b2546b6e559997fdde08caeea83b3",
   "network": "giwa-sepolia",
   "chainId": 91342,
   "contract": "HonkVerifier",
-  "library": "0xaaC5F16CD40D8AF76508ae7dbD6A8FbE60f780B4"
+  "library": "0x90679eEAf3bf37d9deD0316c6E51F6Deeb469cD0"
 }

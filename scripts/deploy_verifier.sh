@@ -279,6 +279,15 @@ fi
 # verifier that nothing in the repository names. Measured on a Blockscout
 # testnet, 2026-09-22.
 FORGE_STATUS=0
+BROADCAST_FILE="broadcast/$(basename $SCRIPT_FILE)/$CHAIN_ID/run-latest.json"
+# Only a broadcast written by THIS run names what this run deployed. On
+# 2026-10-22 a GIWA Sepolia simulation failed before broadcasting, and the
+# run-latest.json left by the September deploy was read back as this run's
+# result: the old address was re-recorded beside the new library and reported
+# as "IS deployed".
+RUN_MARKER=$(mktemp)
+trap 'rm -f "$RUN_MARKER"' EXIT
+sleep 1
 forge script "$SCRIPT_FILE" \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" \
@@ -292,9 +301,8 @@ forge script "$SCRIPT_FILE" \
 # held one hand-written verifier record that went stale the first time the
 # circuit was rebuilt. A stale verifier address does not fail: the old
 # contract is still deployed and still answers, about a circuit nobody runs.
-BROADCAST_FILE="broadcast/$(basename $SCRIPT_FILE)/$CHAIN_ID/run-latest.json"
 DEPLOYED_VERIFIER=""
-if [ -f "$BROADCAST_FILE" ]; then
+if [ -f "$BROADCAST_FILE" ] && [ "$BROADCAST_FILE" -nt "$RUN_MARKER" ]; then
     DEPLOYED_VERIFIER=$(python3 -c "
 import json
 with open('$BROADCAST_FILE') as f:
