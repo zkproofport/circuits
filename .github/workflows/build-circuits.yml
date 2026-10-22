@@ -53,6 +53,17 @@ jobs:
           echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.bb" >> "$GITHUB_PATH"
 
+      # Which circuits ship comes from the customer SDK's key-path table
+      # (write-digests.sh, check-shipped-circuits.sh). This repository is
+      # checked out alone here, so read the SDK as customers get it: from npm.
+      - name: Read the shipped circuit list from the published SDK
+        run: |
+          sdk="$RUNNER_TEMP/sdk"
+          mkdir -p "$sdk"
+          npm pack @zkproofport-app/sdk --pack-destination "$sdk" >/dev/null
+          tar -xzf "$sdk"/*.tgz -C "$sdk"
+          echo "SDK_CIRCUITS_JS=$sdk/package/dist/circuits.js" >> "$GITHUB_ENV"
+
       # build.sh writes each circuit's SRS with noir-rs's srs_downloader
       # (scripts/generate_srs.sh), a Rust build of several minutes; keep the
       # clone and its target between runs, keyed by the pinned noir-rs tag.
@@ -74,14 +85,8 @@ jobs:
             echo "::endgroup::"
           done
 
-      # The shipped list comes from the customer SDK. This repository is
-      # checked out alone here, so read the SDK as customers get it: from npm.
       - name: Fail if a shipped circuit is missing from the build list above
-        run: |
-          sdk=$(mktemp -d)
-          npm pack @zkproofport-app/sdk --pack-destination "$sdk" >/dev/null
-          tar -xzf "$sdk"/*.tgz -C "$sdk"
-          SDK_CIRCUITS_JS="$sdk/package/dist/circuits.js" ./scripts/check-shipped-circuits.sh
+        run: ./scripts/check-shipped-circuits.sh
 
       - name: Publish digests for what the app downloads
         # Exits non-zero when a shipped circuit has no reference string, no

@@ -69,7 +69,9 @@ missing=0
 # The directories the app downloads, from the customer SDK's own key-path
 # table. Reading it rather than repeating it means a circuit added there is
 # covered here without anyone remembering to add it twice.
-SDK_CIRCUITS="../proofport-app-sdk/dist/circuits.js"
+# The monorepo's SDK build by default, or a file named by SDK_CIRCUITS_JS (CI
+# unpacks the published package, having no monorepo).
+SDK_CIRCUITS="${SDK_CIRCUITS_JS:-../proofport-app-sdk/dist/circuits.js}"
 if [[ -f "$SDK_CIRCUITS" ]]; then
   SHIPPED_DIRS="$(node -e '
     const c = require(process.argv[1]);
