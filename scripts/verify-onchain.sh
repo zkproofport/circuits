@@ -83,7 +83,7 @@ echo ""
 # proof from a mismatched contract.
 echo "1. Off-chain (bb verify)..."
 if ! bb verify -p "$TARGET/proof/proof" -i "$TARGET/proof/public_inputs" \
-               -k "$TARGET/vk/vk" --oracle_hash keccak >/dev/null 2>&1; then
+               -k "$TARGET/vk/vk" -t evm >/dev/null 2>&1; then
     echo "   FAILED -- the proof itself does not verify. Nothing to ask the chain." >&2
     exit 1
 fi

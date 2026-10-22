@@ -383,7 +383,7 @@ fn lshift8(item: u32, shifts: u32) -> u32 {
         if shifts >= 4 {
             0
         } else {
-            item << ((8 * shifts) as u8)
+            item << ((8 * shifts) as u32)
         }
     } else {
         if shifts == 4 {
@@ -403,7 +403,7 @@ fn rshift8(item: u32, shifts: u32) -> u32 {
         if shifts >= 4 {
             0
         } else {
-            item >> ((8 * shifts) as u8)
+            item >> ((8 * shifts) as u32)
         }
     } else {
         if shifts == 4 {

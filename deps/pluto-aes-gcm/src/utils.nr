@@ -1,5 +1,5 @@
-type Stream = [u8; 16];
-type Block = [[u8; 4]; 4];
+pub(crate) type Stream = [u8; 16];
+pub(crate) type Block = [[u8; 4]; 4];
 
 pub(crate) fn stream_xor(stream1: Stream, stream2: Stream) -> Stream {
     let mut result: Stream = [0; 16];

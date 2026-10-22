@@ -175,8 +175,8 @@ echo ""
 echo "Proof (action mode):"
 mkdir -p ./target/proof
 if cp "./target/witness_action.gz" ./target/proof/witness.gz 2>/dev/null \
-   && bb prove -b "$CIRCUIT_JSON" -w ./target/proof/witness.gz -k ./target/vk/vk -o ./target/proof --oracle_hash keccak > "$VECTORS/prove.log" 2>&1 \
-   && bb verify -p ./target/proof/proof -i ./target/proof/public_inputs -k ./target/vk/vk --oracle_hash keccak >> "$VECTORS/prove.log" 2>&1; then
+   && bb prove -b "$CIRCUIT_JSON" -w ./target/proof/witness.gz -k ./target/vk/vk -o ./target/proof -t evm > "$VECTORS/prove.log" 2>&1 \
+   && bb verify -p ./target/proof/proof -i ./target/proof/public_inputs -k ./target/vk/vk -t evm >> "$VECTORS/prove.log" 2>&1; then
   echo "  ok       proved and verified ($(wc -c < ./target/proof/proof | tr -d ' ') bytes)"
   PASSED=$((PASSED + 1))
 else

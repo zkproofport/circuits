@@ -195,7 +195,7 @@ fn test_round_constant() {
     assert(round_constant(9) == [0x36, 0x00, 0x00, 0x00]);
 }
 
-fn add_round_key(state: Block, key: Block) -> Block {
+pub(crate) fn add_round_key(state: Block, key: Block) -> Block {
     let mut new_state: Block = [[0; 4]; 4];
     for i in 0..4 {
         for j in 0..4 {

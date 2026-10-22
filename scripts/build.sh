@@ -59,33 +59,27 @@ echo ""
 # BB_ALLOW_VERSION_MISMATCH=1 exists for deliberately measuring another build —
 # comparing output across versions is a legitimate thing to do. It is not a way
 # past a surprise: anything it produces must be treated as scratch.
-BB_EXPECTED_VERSION="1.0.0-nightly.20250723"
-BB_VERSION=$(bb --version 2>/dev/null || echo "not found")
-echo "bb CLI version: $BB_VERSION"
-echo "bb CLI path:    $(command -v bb || echo 'not on PATH')"
+# The pinned set lives in ../toolchain.env; read it rather than restate it.
+# shellcheck disable=SC1091
+. "${CIRCUITS_DIR}/toolchain.env"
+BB_VERSION_GOT=$(bb --version 2>/dev/null || echo "not found")
+NARGO_VERSION_GOT=$(nargo --version 2>/dev/null | sed -n 's/^nargo version = //p')
+echo "bb CLI version:    $BB_VERSION_GOT ($(command -v bb || echo 'not on PATH'))"
+echo "nargo version:     ${NARGO_VERSION_GOT:-not found} ($(command -v nargo || echo 'not on PATH'))"
 
-if [ "$BB_VERSION" != "$BB_EXPECTED_VERSION" ]; then
-    # The pinned binary built from source prints all-zeroes rather than a
-    # version, because it skipped Aztec's release step. That is expected and
-    # documented in CLAUDE.md, so it is allowed through — but named here, so
-    # nobody reads it as a fault.
-    if [ "$BB_VERSION" = "00000000.00000000.00000000" ]; then
-        echo "  (all-zero version string: a bb built from source, which is the pinned one)"
-    elif [ "${BB_ALLOW_VERSION_MISMATCH:-0}" = "1" ]; then
+if [ "$BB_VERSION_GOT" != "$BB_VERSION" ] || [ "$NARGO_VERSION_GOT" != "$NARGO_VERSION" ]; then
+    if [ "${BB_ALLOW_VERSION_MISMATCH:-0}" = "1" ]; then
         echo "  [!] Version mismatch allowed by BB_ALLOW_VERSION_MISMATCH=1."
         echo "      Whatever this produces is scratch. Do not commit it."
     else
         echo ""
-        echo "[FAIL] Wrong bb. Expected ${BB_EXPECTED_VERSION}, got ${BB_VERSION}."
+        echo "[FAIL] Wrong toolchain. toolchain.env pins nargo ${NARGO_VERSION} and bb ${BB_VERSION}."
         echo ""
-        echo "  This matters even though the verification key would come out the"
-        echo "  same: the PROOF format differs, and the pinned bb rejects proofs"
-        echo "  another version made. That is how three circuits ended up with"
-        echo "  unverifiable proofs committed on 2026-09-03."
+        echo "  The verification key can come out identical across bb versions while"
+        echo "  the PROOF format differs; that is how three circuits ended up with"
+        echo "  unverifiable proofs committed on 2026-09-03. So this refuses."
         echo ""
-        echo "  Fix the PATH rather than the symptom:"
-        echo "    export PATH=\"\$HOME/.bb:\$PATH\"   # ~/.bb/bb links to the pinned build"
-        echo ""
+        echo "  Install the pinned pair:  scripts/install-toolchain.sh"
         echo "  To compare versions on purpose: BB_ALLOW_VERSION_MISMATCH=1"
         exit 1
     fi
@@ -155,7 +149,7 @@ echo "2. Generating Verification Key (Keccak + ZK)..."
 bb write_vk \
   -b "$CIRCUIT_JSON" \
   -o ./target/vk \
-  --oracle_hash keccak
+  -t evm
 echo "VK generation complete"
 echo ""
 
@@ -175,7 +169,7 @@ if [ "$HAS_POST_BUILD_HOOK" = false ] && [ -f "./Prover.toml" ]; then
       -w ./target/proof/witness.gz \
       -k ./target/vk/vk \
       -o ./target/proof \
-      --oracle_hash keccak
+      -t evm
     PROOF_SIZE=$(wc -c < ./target/proof/proof)
     echo "Proof generation complete: $PROOF_SIZE bytes"
     echo ""
@@ -193,7 +187,7 @@ if [ "$HAS_POST_BUILD_HOOK" = false ] && [ -f "./Prover.toml" ]; then
       -p ./target/proof/proof \
       -i ./target/proof/public_inputs \
       -k ./target/vk/vk \
-      --oracle_hash keccak
+      -t evm
     echo "Verification successful!"
     echo ""
 else
@@ -214,7 +208,8 @@ VERIFIER_FILE="./target/${VERIFIER_NAME}.sol"
 echo "7. Generating Solidity Verifier (Keccak + ZK)..."
 bb write_solidity_verifier \
   -k ./target/vk/vk \
-  -o "$VERIFIER_FILE"
+  -o "$VERIFIER_FILE" \
+  -t evm
 VERIFIER_LINES=$(wc -l < "$VERIFIER_FILE")
 echo "Verifier generation complete: $VERIFIER_LINES lines"
 echo ""
@@ -234,6 +229,14 @@ echo ""
 # ---------------------------------------------------------------------------
 
 echo "8. Generating SRS (reference string)..."
+# A reference string is reused only if the noir-rs that wrote it is the one
+# toolchain.env pins: its size and layout belong to that prover, and a stale
+# one survives a toolchain change silently because the file still exists.
+SRS_STAMP="./target/${CIRCUIT_NAME}.srs.toolchain"
+if [ -f "./target/${CIRCUIT_NAME}.srs" ] && [ "$(cat "$SRS_STAMP" 2>/dev/null)" != "$NOIR_RS_TAG" ]; then
+    echo "SRS was written by $(cat "$SRS_STAMP" 2>/dev/null || echo 'an unrecorded noir-rs'); regenerating for ${NOIR_RS_TAG}"
+    rm -f "./target/${CIRCUIT_NAME}.srs"
+fi
 if [ -f "./target/${CIRCUIT_NAME}.srs" ]; then
     echo "SRS already present: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
 else
@@ -247,7 +250,11 @@ else
         echo "  circuits checkout, which cannot produce a reference string." >&2
         exit 1
     fi
-    if ! "$SRS_TOOL" "$CIRCUIT_DIR_NAME"; then
+    # The generator takes the path under circuits/ (mdl/kr-age), not the bare
+    # folder name: given "kr-age" it looks for circuits/kr-age and fails. That
+    # stayed hidden while every circuit already had a .srs to reuse.
+    CIRCUIT_REL_DIR="${CIRCUIT_DIR#"${CIRCUITS_DIR}"/}"
+    if ! "$SRS_TOOL" "$CIRCUIT_REL_DIR"; then
         echo "Error: SRS generation failed for ${CIRCUIT_DIR_NAME}." >&2
         echo "  Without it no device can prove this circuit, so this build is not" >&2
         echo "  publishable. Fix the cause rather than skipping this step." >&2
@@ -260,6 +267,7 @@ if [ ! -f "./target/${CIRCUIT_NAME}.srs" ]; then
     echo "  repository shipped a build with no reference string." >&2
     exit 1
 fi
+echo "$NOIR_RS_TAG" > "$SRS_STAMP"
 echo "SRS ready: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
 echo ""
 

@@ -5,7 +5,7 @@ use crate::aes::{aes, add_round_key};
 
 // starting with fixed size input
 // TODO(WJ 2024-10-10): make this work for arbitrary length input
-fn gctr(key: Stream, initial_counter_block: Block, plaintext: Stream) -> Stream {
+pub(crate) fn gctr(key: Stream, initial_counter_block: Block, plaintext: Stream) -> Stream {
     let mut ciphertext: Block = [[0; 4]; 4];
     let pt_blocks = [stream_to_block(plaintext)];
     let mut counter_block = initial_counter_block;

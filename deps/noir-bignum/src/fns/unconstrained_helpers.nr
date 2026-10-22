@@ -368,12 +368,12 @@ pub(crate) unconstrained fn __shr<let N: u32>(input: [u128; N], shift: u32) -> [
     let num_shifted_limbs = shift / 120;
     let limb_shift = (shift % 120) as u128;
     let remainder_shift = (120 - limb_shift);
-    let mask: u128 = (((1 as u128) << (limb_shift as u8)) - 1) << (remainder_shift as u8);
-    result[0] = (input[0 + num_shifted_limbs] >> (limb_shift as u8));
+    let mask: u128 = (((1 as u128) << (limb_shift as u128)) - 1) << (remainder_shift as u128);
+    result[0] = (input[0 + num_shifted_limbs] >> (limb_shift as u128));
     for i in 1..(N - num_shifted_limbs) {
         let value = input[i + num_shifted_limbs];
-        result[i] = value >> (limb_shift as u8);
-        let remainder: u128 = (value << (remainder_shift as u8)) & mask;
+        result[i] = value >> (limb_shift as u128);
+        let remainder: u128 = (value << (remainder_shift as u128)) & mask;
         result[i - 1] = result[i - 1] + remainder;
     }
     result
@@ -394,15 +394,15 @@ pub(crate) unconstrained fn __shl<let N: u32>(input: [u128; N], shift: u32) -> [
     //   let mask: u64 = (((1 as u64) << limb_shift as u8) - 1) << remainder_shift as u8;
     let value = input[0];
 
-    let mut remainder = (value >> (remainder_shift as u8));
-    result[num_shifted_limbs] = (value << (limb_shift as u8)) & mask;
+    let mut remainder = (value >> (remainder_shift as u128));
+    result[num_shifted_limbs] = (value << (limb_shift as u128)) & mask;
 
     // shift 84. num shifted = 1
     for i in 1..((N) - num_shifted_limbs) {
         let value = input[i];
-        let upshift = ((value << (limb_shift as u8)) + remainder) & mask;
+        let upshift = ((value << (limb_shift as u128)) + remainder) & mask;
         result[i + num_shifted_limbs] = upshift;
-        remainder = (value >> (remainder_shift as u8));
+        remainder = (value >> (remainder_shift as u128));
     }
     result
 }
@@ -462,7 +462,7 @@ pub(crate) fn __get_bit<let N: u32>(input: [u128; N], bit: u32) -> bool {
     let segment_index: u32 = bit / 120;
     let uint_index = (bit % 120) as u128;
     let limb: u128 = input[segment_index];
-    let value = (limb >> (uint_index as u8)) & 1;
+    let value = (limb >> (uint_index as u128)) & 1;
     value == 1
 }
 
