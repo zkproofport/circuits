@@ -7,6 +7,7 @@
     "giwa:attest": "node giwa-poc/attest-account.js attest"
   },
   "dependencies": {
-    "ethers": "^6.16.0"
+    "ethers": "^6.16.0",
+    "poseidon-lite": "^0.3.0"
   }
 }

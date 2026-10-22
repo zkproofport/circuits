@@ -16,6 +16,8 @@ This repository contains executable circuit code, shared Noir libraries, generat
 
 [`dojang-playground`](dojang-playground) is a GIWA Sepolia demo circuit outside the CIP mapping.
 
+[`oprf-request-auth-poc`](oprf-request-auth-poc) and [`oprf-nullifier-poc`](oprf-nullifier-poc) are prototypes for nullifiers keyed by an OPRF service (`proofport-oprf/`), using TACEO's gadgets ported in [`deps/oprf-nr`](deps/oprf-nr).
+
 `coinbase-libs` is a shared implementation library. `coinbase-kyc` is an older reference-only circuit. `_archived-poc` and `zktls` are outside the current credential CIP mapping.
 
 ## Implemented circuits

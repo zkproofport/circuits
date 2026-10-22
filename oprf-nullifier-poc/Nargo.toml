@@ -1,0 +1,10 @@
+[package]
+name = "oprf_nullifier_poc"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+babyjubjub = { path = "../deps/oprf-nr/babyjubjub" }
+oprf = { path = "../deps/oprf-nr/oprf" }
+poseidon = { path = "../deps/poseidon" }
