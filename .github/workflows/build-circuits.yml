@@ -44,6 +44,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The repository's default token is read-only; committing the rebuilt
+    # artifacts back (commit_artifacts) needs write.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
