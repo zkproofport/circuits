@@ -12,7 +12,7 @@ This repository contains executable circuit code, shared Noir libraries, generat
 | CIP-2 | [Coinbase Country Predicate](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-2.md) | [`coinbase-country-attestation`](coinbase-country-attestation) | Reference |
 | CIP-3 | [OIDC Domain Attestation](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-3.md) | [`oidc-domain-attestation`](oidc-domain-attestation) | Reference |
 | CIP-4 | [GIWA Dojang Verified Address Proof](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-4.md) | [`giwa-attestation`](giwa-attestation) | PoC |
-| CIP-5 | [Korean Mobile ID Selective Disclosure Profile](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-5.md) | [`mdl/kr-*`](mdl) | Experimental |
+| CIP-5 | [Korean Mobile ID Selective Disclosure Profile](https://github.com/zkproofport/CIPs/blob/main/CIPS/cip-5.md) | [`mdl/kr-*`](mdl) | Beta |
 
 [`dojang-playground`](dojang-playground) is a GIWA Sepolia demo circuit outside the CIP mapping.
 
@@ -32,21 +32,21 @@ Extends the Coinbase transaction profile with a private two-byte country code an
 
 Verifies a Google Workspace or Microsoft 365 OIDC JWT with RSA-2048 and proves that its private email ends in a public domain. It exposes a provider identifier and an email-derived scope-bound nullifier.
 
-Provider key authorization, JWT freshness, issuer, audience, and nonce policy are not enforced by the current circuit and must be handled by an integration profile.
+Provider key authorization, JWT freshness, issuer, audience, and nonce policy are checked by the integrating application alongside the proof.
 
 ### GIWA attestation — PoC
 
-GIWA Sepolia proof flow using a test `MockGiwaAttester`, mobile-compatible UltraHonk proof generation, and an EVM verifier. Production Dojang issuer and schema parameters remain unresolved.
+GIWA Sepolia proof flow using a test `MockGiwaAttester`, mobile-compatible UltraHonk proof generation, and an EVM verifier.
 
 ### Dojang Playground — Demo
 
 Proves that a wallet signed the request and that the same key signed a GIWA Sepolia `payAndIssueEAS()` call to the Playground faucet (`0x63CCe2b569A7bC35895ee24306c1512fefc06121`), the call that issues a Dojang attestation to its sender. Legacy (EIP-155) and EIP-1559 transactions are both accepted. The issuance is self-signed, so there is no issuer check and no inclusion check; the circuit demonstrates the flow.
 
-### Korean Mobile ID predicates — Experimental
+### Korean Mobile ID predicates — Beta
 
 Three circuits under `mdl/` implement ownership/selective field commitment, year-based age threshold, and region-token predicates. They share `keccak256(keccak256(ci) || scope)` nullifiers.
 
-The active circuits do not yet cryptographically authenticate claims against a canonical Mobile ID issuer trust anchor.
+ZKProofport is registered with the Ministry of the Interior and Safety as a Korea Mobile ID integration service (모바일 신분증 연계서비스).
 
 ## Shared nullifier schemes
 
@@ -74,7 +74,7 @@ The circuit name is compiled in, so one wallet has one nullifier per scope and p
 nullifier = keccak256(keccak256(email) || scope)
 ```
 
-### Korean Mobile ID experimental profile
+### Korean Mobile ID profile
 
 ```text
 nullifier = keccak256(keccak256(ci) || scope)
@@ -86,14 +86,17 @@ Nullifier storage is application-specific. `NullifierRegistry` and `ZKProofportN
 
 The current generated artifacts were built with:
 
-- `nargo 1.0.0-beta.8`
-- `bb v1.0.0-nightly.20250723`
+- `nargo 1.0.0-beta.19`
+- `bb 4.2.0-aztecnr-rc.2`
+
+Both are pinned in [`toolchain.env`](toolchain.env); install them with `./scripts/install-toolchain.sh`.
 
 ```bash
 ./scripts/build.sh coinbase-attestation
 ./scripts/build.sh coinbase-country-attestation
 ./scripts/build.sh oidc-domain-attestation
 ./scripts/build.sh giwa-attestation
+./scripts/build.sh dojang-playground
 ./scripts/build.sh mdl/kr-ownership
 ./scripts/build.sh mdl/kr-age
 ./scripts/build.sh mdl/kr-region
@@ -112,26 +115,26 @@ See each pinned CIP for semantic public-input ordering and conformance requireme
 
 ## Reference deployments
 
-The tables below are synchronized with `broadcast/**/run-latest.json` at revision [`28bbc303e04b732eb612d419b44dfd39d8a38a9a`](https://github.com/zkproofport/circuits/commit/28bbc303e04b732eb612d419b44dfd39d8a38a9a).
+The tables below are synchronized with `broadcast/**/run-latest.json` at revision [`67940e94ca3f736a3403cd09ef66896b5af38da9`](https://github.com/zkproofport/circuits/commit/67940e94ca3f736a3403cd09ef66896b5af38da9).
 
 ### Ethereum Sepolia — chain ID 11155111
 
 | Circuit | Verifier | Deployment record |
 |---|---|---|
-| Coinbase KYC | `0xcbc8e63ff92659e8b44cff117d33005bb669a018` | [`DeployCoinbaseAttestation`](broadcast/DeployCoinbaseAttestation.s.sol/11155111/run-latest.json) |
-| Coinbase Country | `0x6646d970499bbed728636823a5a7e551e811b414` | [`DeployCoinbaseCountryAttestation`](broadcast/DeployCoinbaseCountryAttestation.s.sol/11155111/run-latest.json) |
-| OIDC Domain | `0x07121eb50b2ebe1675e7cb96c84b580a3ff6589e` | [`DeployOidcDomainAttestation`](broadcast/DeployOidcDomainAttestation.s.sol/11155111/run-latest.json) |
+| Coinbase KYC | `0x7fc2059a73cef2b572c8deee911c72963dcb4a8a` | [`DeployCoinbaseAttestation`](broadcast/DeployCoinbaseAttestation.s.sol/11155111/run-latest.json) |
+| Coinbase Country | `0x0b3af3dfc67dc65e0145c37ee00230139d579f64` | [`DeployCoinbaseCountryAttestation`](broadcast/DeployCoinbaseCountryAttestation.s.sol/11155111/run-latest.json) |
+| OIDC Domain | `0x41d707cd61847bb6939f3f1182ec96efe6aaa983` | [`DeployOidcDomainAttestation`](broadcast/DeployOidcDomainAttestation.s.sol/11155111/run-latest.json) |
 
 ### Base Sepolia — chain ID 84532
 
 | Circuit | Verifier | Deployment record |
 |---|---|---|
-| Coinbase KYC | `0x0036b61dbfab8f3cfeef77dd5d45f7efbfe2035c` | [`DeployCoinbaseAttestation`](broadcast/DeployCoinbaseAttestation.s.sol/84532/run-latest.json) |
-| Coinbase Country | `0xdee363585926c3c28327efd1edd01cf4559738cf` | [`DeployCoinbaseCountryAttestation`](broadcast/DeployCoinbaseCountryAttestation.s.sol/84532/run-latest.json) |
-| OIDC Domain | `0x27afdea349f247cf698f97fdfab59e1bf8bd0550` | [`DeployOidcDomainAttestation`](broadcast/DeployOidcDomainAttestation.s.sol/84532/run-latest.json) |
-| Mobile ID ownership | `0x7602d09d24e6e16eff5ab981646872886376763e` | [`DeployMdlKrOwnership`](broadcast/DeployMdlKrOwnership.s.sol/84532/run-latest.json) |
-| Mobile ID age | `0xcff90ff8ceadc98f625300dc976ed85a3aa943ba` | [`DeployMdlKrAge`](broadcast/DeployMdlKrAge.s.sol/84532/run-latest.json) |
-| Mobile ID region | `0x435f0448f02f5df9659d460181116bcaf37e518e` | [`DeployMdlKrRegion`](broadcast/DeployMdlKrRegion.s.sol/84532/run-latest.json) |
+| Coinbase KYC | `0x42d165a48256ae184e1de4e7e6372e870e2bc883` | [`DeployCoinbaseAttestation`](broadcast/DeployCoinbaseAttestation.s.sol/84532/run-latest.json) |
+| Coinbase Country | `0x9deea2189ae694d7a36f65fb7d7dbe9f75abddce` | [`DeployCoinbaseCountryAttestation`](broadcast/DeployCoinbaseCountryAttestation.s.sol/84532/run-latest.json) |
+| OIDC Domain | `0x5d9ece4f0276d12693f79659760a68011efef485` | [`DeployOidcDomainAttestation`](broadcast/DeployOidcDomainAttestation.s.sol/84532/run-latest.json) |
+| Mobile ID ownership | `0x49c03b925583aa8528bbfba5a1a4e1f9b157c95a` | [`DeployMdlKrOwnership`](broadcast/DeployMdlKrOwnership.s.sol/84532/run-latest.json) |
+| Mobile ID age | `0x45d4850a9b197ceba185b5069fb13ce0be1dc6d6` | [`DeployMdlKrAge`](broadcast/DeployMdlKrAge.s.sol/84532/run-latest.json) |
+| Mobile ID region | `0x044116df792eb424c9648df2deeda97afa617ac0` | [`DeployMdlKrRegion`](broadcast/DeployMdlKrRegion.s.sol/84532/run-latest.json) |
 
 ### Base Mainnet — chain ID 8453
 
@@ -145,8 +148,8 @@ The tables below are synchronized with `broadcast/**/run-latest.json` at revisio
 
 | Circuit | Verifier | Deployment record |
 |---|---|---|
-| GIWA attestation PoC | `0x5da234546874304f8c51bbeed00fc632938211c1` | [`DeployGiwaAttestation`](broadcast/DeployGiwaAttestation.s.sol/91342/run-latest.json) |
-| Dojang Playground | `0x2d01c2fe3445b7dde60118f956bb14e84fd64724` | [`DeployDojangPlayground`](broadcast/DeployDojangPlayground.s.sol/91342/run-latest.json) |
+| GIWA attestation | `0xf6edb9d6114b2546b6e559997fdde08caeea83b3` | [`DeployGiwaAttestation`](broadcast/DeployGiwaAttestation.s.sol/91342/run-latest.json) |
+| Dojang Playground | `0xad6c9bfa60f3ee618dee9dc2027a69c57f2ad816` | [`DeployDojangPlayground`](broadcast/DeployDojangPlayground.s.sol/91342/run-latest.json) |
 
 ## Deploying verifiers
 
@@ -158,9 +161,9 @@ Deployment scripts are under [`script/`](script), with generated verifier source
 
 Environment-specific keys, RPC URLs, and explorer credentials are required.
 
-## Security status
+## Trust model
 
-No external security audit or formal verification is documented for the current circuits. Review each CIP's trust assumptions and known limitations before relying on a reference implementation or deployment.
+Each CIP describes the trust assumptions of its circuit.
 
 ## License
 
