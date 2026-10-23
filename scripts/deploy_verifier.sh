@@ -21,6 +21,7 @@ usage() {
     echo "  oidc-domain-attestation        Deploy OidcDomainAttestation verifier"
     echo "  giwa-attestation               Deploy GiwaAttestation verifier"
     echo "  dojang-playground              Deploy DojangPlayground verifier"
+    echo "  coinbase-app-attest-poc        Deploy the CoinbaseAppAttestPoc prototype (testnets only)"
     echo "  mdl-kr-ownership               Deploy MdlKrOwnership (Korea Mobile ID — ownership)"
     echo "  mdl-kr-age                     Deploy MdlKrAge (Korea Mobile ID — age predicate)"
     echo "  mdl-kr-region                  Deploy MdlKrRegion (Korea Mobile ID — region predicate)"
@@ -252,6 +253,18 @@ case $COMMAND in
         SOL_FILE="dojang-playground/target/DojangPlayground.sol"
         SCRIPT_FILE="script/DeployDojangPlayground.s.sol"
         DISPLAY_NAME="DojangPlayground"
+        ;;
+    coinbase-app-attest-poc)
+        # PROTOTYPE (branch coinbase-app-attest-poc): testnets only.
+        case $NETWORK in
+            base|mainnet)
+                echo -e "${RED}Error: coinbase-app-attest-poc is a prototype; it is not deployed to $NETWORK${NC}"
+                exit 1
+                ;;
+        esac
+        SOL_FILE="coinbase-app-attest-poc/target/CoinbaseAppAttestPoc.sol"
+        SCRIPT_FILE="script/DeployCoinbaseAppAttestPoc.s.sol"
+        DISPLAY_NAME="CoinbaseAppAttestPoc"
         ;;
     mdl-kr-ownership)
         SOL_FILE="mdl/kr-ownership/target/MdlKrOwnership.sol"
