@@ -15,8 +15,10 @@ The build output the app downloads is committed (`target/<name>.json`, `.srs`,
 `.srs.toolchain`, `SHA256SUMS`, `target/vk/`), so proofport-app's App Attest
 development switch can prove this circuit on a phone from this branch. It is
 read by commit, not by branch name: the app pins the commit that holds these
-files (`proofport-app/src/config/prototypeCircuits.ts`). No verifier contract
-exists for it; proofs are checked off-chain only.
+files (`proofport-app/src/config/prototypeCircuits.ts`). Its verifier is on
+Base Sepolia only (`deployments/84532/CoinbaseAppAttestPoc.json`,
+`scripts/deploy_verifier.sh coinbase-app-attest-poc base-sepolia`, 2026-10-23);
+the script refuses mainnets for it.
 
 ## What the circuit proves
 
