@@ -49,3 +49,9 @@ mdl/kr-region/test-vectors/
 
 # Node dependencies for the helper scripts under scripts/ (see package.json).
 node_modules/
+
+# coinbase_attestation_v2 acceptance: the synthetic-anchors copy and mutation
+# copies are rebuilt from the circuit on every run (scripts/coinbase-attestation-v2/).
+coinbase-attestation-v2-synthetic-anchors/
+coinbase-attestation-v2-mutant/
+app-attest-libs-mutant/

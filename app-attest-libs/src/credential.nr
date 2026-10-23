@@ -6,8 +6,7 @@
 //   1. The TBS is signed by the App Attest intermediate CA key, ECDSA P-384
 //      over SHA-256 of the TBS. (Not SHA-384: Apple's credential certificates
 //      carry ecdsa-with-SHA256 -- read from a real one, see tests.nr. Only the
-//      root -> intermediate link uses SHA-384, and that link is verified
-//      outside the circuit.)
+//      root -> intermediate link uses SHA-384; see intermediate.nr.)
 //   2. The TBS is walked field by field (bounded DER, no pattern search) to:
 //      - the signature algorithm, which must be ecdsa-with-SHA256,
 //      - the SubjectPublicKeyInfo, which must be an uncompressed P-256 key,

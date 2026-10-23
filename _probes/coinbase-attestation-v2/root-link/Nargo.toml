@@ -1,0 +1,7 @@
+[package]
+name = "probe_root_link"
+type = "bin"
+authors = ["zkproofport"]
+
+[dependencies]
+app_attest = { path = "../../../app-attest-libs" }

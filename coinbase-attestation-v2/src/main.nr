@@ -1,41 +1,64 @@
-// PROTOTYPE -- Coinbase KYC with revocation enforced through Apple App Attest.
-// Not a canonical circuit; no verifier is deployed for it. README.md has the
-// clientData spec, the public-input layout and the measurements.
+// coinbase_attestation v2 -- Coinbase KYC whose revocation is bound by a
+// signed statement, from Apple App Attest or from the AI server.
 //
-// WHY APP ATTEST
+// Built from the coinbase_app_attest_poc prototype (circuits commit
+// b281485 / 33344e2). This package is named coinbase_attestation_v2 while v1
+// still lives in ../coinbase-attestation; the circuit ID it serves is the
+// canonical `coinbase_attestation`, and that is what its nullifier tag and
+// clientData carry. README.md has the clientData spec, what the server signs,
+// the public inputs and the measurements.
 //
-// coinbase_attestation proves Coinbase once sent attestAccount(wallet). That
-// stays true after Coinbase revokes the attestation. Decided 2026-10-23 (see
-// .claude/agents/circuits-dev.md, "Decisions"): do what zkPassport does for
-// FaceMatch. The app looks the EAS attestation up right before proving, and
-// only if it is unrevoked asks App Attest to sign a statement saying so,
-// bound to this wallet, this time and this request. The circuit checks that
-// a genuine instance of our app on a genuine Apple device made that statement.
-// The gap that remains is a device owner feeding the genuine app a forged
-// lookup answer (own root CA + proxy); certificate pinning narrows it.
+// WHY A SIGNED STATEMENT
+//
+// coinbase_attestation v1 proves Coinbase once sent attestAccount(wallet).
+// That stays true after Coinbase revokes the attestation. So whoever builds
+// the proof looks the EAS attestation up right before proving and, only if it
+// is unrevoked, has a key the circuit trusts sign a statement saying so,
+// bound to this wallet, this time and this request (decided 2026-10-23,
+// .claude/agents/circuits-dev.md "Decisions").
+//
+// TWO SIGNERS, ONE CIRCUIT, AND THE PROOF DOES NOT SAY WHICH
+//
+//   app     The phone. Apple App Attest: Apple's root -> App Attest
+//           intermediate -> credential certificate for our App ID -> an
+//           assertion over the statement. Only Apple's ROOT key is pinned
+//           (apple_root.nr); the intermediate is verified here, so Apple
+//           rotating it needs nothing from us.
+//   server  The AI server, which proves for SDK/MCP callers and has no
+//           Secure Enclave. Its P-256 key (Cloud KMS) is pinned in
+//           server_key.nr and signs SHA256(statement) directly.
+//
+// The signer kind is a PRIVATE byte. Both kinds end in the same P-256
+// signature check; they differ only in where the key and the digest come
+// from. A prover cannot pick their own key: the server key is a constant and
+// the app key must come out of a certificate chain ending at Apple's root.
+//
+// The app-only checks sit inside `if kind == app { ... }`. Noir compiles that
+// into constraints that hold only when the condition is true (they cost the
+// same either way), so the server passes zeros for every App Attest input
+// instead of a dummy certificate chain.
 //
 // WHAT THIS PROVES
 //
 //   1. The wallet signed the request: personal_sign over signal_hash, or an
 //      EIP-712 action -- coinbase_libs::signed_message::signed_digest, the
 //      same rule as giwa_attestation, with the same public-input order.
-//   2. coinbase_attestation's checks, unchanged: an attestAccount(wallet)
+//   2. coinbase_attestation v1's checks, unchanged: an attestAccount(wallet)
 //      transaction to Coinbase's attester, signed by a key whose address is
 //      in the public signer Merkle root.
-//   3. App Attest: the credential certificate is signed by the intermediate
-//      CA whose key hashes to the public app_attest_ca_key_hash, is for our
-//      App ID, and its key signed an assertion over a clientData that names
-//      this wallet, the public attested_at, Coinbase's KYC schema and
-//      attester, revoked = 0, this request's digest and this scope.
+//   3. A statement (client_data.nr) naming this wallet, the public
+//      attested_at, Coinbase's KYC schema and attester, revoked = 0, this
+//      request's digest and this scope, signed by the app (production App
+//      Attest environment only) or by the server.
 //   4. Nullifier: keccak(keccak(wallet ++ CIRCUIT_TAG) ++ scope).
 //
-// THE NULLIFIER TAG IS keccak256("coinbase_attestation"), NOT THIS PACKAGE'S
-// NAME. This prototype is the next version of coinbase_attestation (circuits
-// v2.0.0), and that circuit keeps its canonical id; its nullifiers must be
-// the ones the shipped circuit will produce, and proofport-ai's
-// computeWalletNullifier(address, circuitId) derives the tag from the id.
+// THE NULLIFIER TAG IS keccak256("coinbase_attestation"), the canonical id,
+// not this package's name: proofport-ai's computeWalletNullifier(address,
+// circuitId) derives the tag from the id.
 
 mod client_data;
+mod apple_root;
+mod server_key;
 
 use keccak256::keccak256;
 use coinbase_libs::eip1559_tx_parser;
@@ -44,10 +67,24 @@ use coinbase_libs::nullifier::verify_wallet_nullifier;
 use coinbase_libs::signed_message::signed_digest;
 use coinbase_libs::ethereum::{COINBASE_ATTESTER_CONTRACT, derive_address_from_pubkey};
 use app_attest::{
-    AppAttestInputs, ASSERT_AUTH_DATA_MAX_LEN, ATT_AUTH_DATA_MAX_LEN, CREDENTIAL_TBS_MAX_LEN,
-    verify_app_attest,
+    AppAttestChain, ASSERT_AUTH_DATA_MAX_LEN, ATT_AUTH_DATA_MAX_LEN, CREDENTIAL_TBS_MAX_LEN,
+    INTERMEDIATE_TBS_MAX_LEN, app_attest_signing_key,
 };
 use client_data::{CLIENT_DATA_LEN, check_client_data};
+use apple_root::APPLE_APP_ATTESTATION_ROOT_KEY;
+use server_key::SERVER_KEY;
+
+/// The private signer-kind byte. Any other value is refused.
+global KIND_APP: u8 = 1;
+global KIND_SERVER: u8 = 2;
+
+/// Only production App Attest keys are accepted. Development (sandbox) keys
+/// chain to the same Apple root and differ only in the AAGUID, so this is
+/// the check that keeps them out. Apple: builds distributed through
+/// TestFlight / the App Store use production regardless of the entitlement,
+/// and a development build can be pointed at production by setting
+/// com.apple.developer.devicecheck.appattest-environment to "production".
+global APP_ATTEST_PRODUCTION: bool = true;
 
 /// attestAccount(address) -- 0x56feed5e
 global ATTEST_ACCOUNT_SELECTOR: [u8; 4] = [0x56, 0xfe, 0xed, 0x5e];
@@ -81,16 +118,10 @@ fn main(
     scope: pub [u8; 32],
     nullifier: pub [u8; 32],
 
-    // ============ Public Inputs (App Attest) ============
-    // SHA256(X || Y) of the App Attest intermediate CA key. The verifier
-    // checks it is the key Apple's root signed (outside the circuit).
-    app_attest_ca_key_hash: pub [u8; 32],
-    // When the app saw the attestation unrevoked (unix seconds). The verifier
-    // enforces freshness against its own clock.
+    // ============ Public Input (the statement's time) ============
+    // When the signer saw the attestation unrevoked (unix seconds). The
+    // verifier enforces freshness against its own clock.
     attested_at: pub u64,
-    // true: the key is from the production App Attest environment; false:
-    // development. The verifier decides which it accepts.
-    app_attest_production: pub bool,
 
     // ============ Private Inputs ============
     user_address: [u8; 20],
@@ -106,8 +137,17 @@ fn main(
     coinbase_signer_leaf_index: u32,
     merkle_proof_depth: u32,
 
+    // The statement, and who signed it.
     client_data: [u8; CLIENT_DATA_LEN],
-    app_attest_ca_key: [u8; 96],
+    signer_kind: u8,
+    // P-256 r || s, s in low form: the App Attest assertion signature (app)
+    // or the server's signature (server).
+    statement_sig: [u8; 64],
+
+    // App Attest chain. The server kind passes zeros for all of these.
+    intermediate_tbs: [u8; INTERMEDIATE_TBS_MAX_LEN],
+    intermediate_tbs_len: u32,
+    intermediate_sig: [u8; 96],
     credential_tbs: [u8; CREDENTIAL_TBS_MAX_LEN],
     credential_tbs_len: u32,
     credential_sig: [u8; 96],
@@ -116,7 +156,6 @@ fn main(
     att_client_data_hash: [u8; 32],
     assertion_auth_data: [u8; ASSERT_AUTH_DATA_MAX_LEN],
     assertion_auth_data_len: u32,
-    assertion_sig: [u8; 64],
 ) {
     // ===================================================================
     // PART 1: this wallet signed THIS request
@@ -173,7 +212,7 @@ fn main(
     assert(calldata_address == user_address, "Calldata address does not match user_address");
 
     // ===================================================================
-    // PART 3: the genuine app said, at attested_at, that this wallet's
+    // PART 3: a trusted signer said, at attested_at, that this wallet's
     //         Coinbase attestation was unrevoked -- for this request
     // ===================================================================
     check_client_data(
@@ -184,24 +223,61 @@ fn main(
         message_hash,
         scope,
     );
-    let _counter = verify_app_attest(
-        AppAttestInputs {
-            ca_key: app_attest_ca_key,
-            credential_tbs,
-            credential_tbs_len,
-            credential_sig,
-            att_auth_data,
-            att_auth_data_len,
-            att_client_data_hash,
-            assertion_auth_data,
-            assertion_auth_data_len,
-            assertion_sig,
-        },
-        app_attest_ca_key_hash,
-        APP_ID,
-        APP_ID_HASH,
-        app_attest_production,
-        client_data,
+    assert(
+        (signer_kind == KIND_APP) | (signer_kind == KIND_SERVER),
+        "Unknown statement signer kind",
+    );
+    let client_data_hash = sha256::digest(client_data);
+
+    // Server: the pinned key over SHA256(clientData).
+    let mut key_x: [u8; 32] = [0; 32];
+    let mut key_y: [u8; 32] = [0; 32];
+    for i in 0..32 {
+        key_x[i] = SERVER_KEY[i];
+        key_y[i] = SERVER_KEY[32 + i];
+    }
+    let mut digest = client_data_hash;
+
+    // App: the credential key Apple's chain vouches for, over Apple's
+    // assertion digest SHA256(SHA256(authenticatorData || SHA256(clientData))).
+    if signer_kind == KIND_APP {
+        let mut root_x: [u8; 48] = [0; 48];
+        let mut root_y: [u8; 48] = [0; 48];
+        for i in 0..48 {
+            root_x[i] = APPLE_APP_ATTESTATION_ROOT_KEY[i];
+            root_y[i] = APPLE_APP_ATTESTATION_ROOT_KEY[48 + i];
+        }
+        let (x, y, d, _counter) = app_attest_signing_key(
+            AppAttestChain {
+                intermediate_tbs,
+                intermediate_tbs_len,
+                intermediate_sig,
+                credential_tbs,
+                credential_tbs_len,
+                credential_sig,
+                att_auth_data,
+                att_auth_data_len,
+                att_client_data_hash,
+                assertion_auth_data,
+                assertion_auth_data_len,
+            },
+            root_x,
+            root_y,
+            APP_ID,
+            APP_ID_HASH,
+            APP_ATTEST_PRODUCTION,
+            client_data_hash,
+        );
+        key_x = x;
+        key_y = y;
+        digest = d;
+    }
+
+    // One P-256 check for both kinds (a Barretenberg black box; it refuses a
+    // high s, so the signer's s is put in low form before proving).
+    assert(
+        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),
+        "Statement signature is invalid",
     );
 
     // ===================================================================

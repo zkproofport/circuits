@@ -21,7 +21,7 @@ usage() {
     echo "  oidc-domain-attestation        Deploy OidcDomainAttestation verifier"
     echo "  giwa-attestation               Deploy GiwaAttestation verifier"
     echo "  dojang-playground              Deploy DojangPlayground verifier"
-    echo "  coinbase-app-attest-poc        Deploy the CoinbaseAppAttestPoc prototype (testnets only)"
+    echo "  coinbase-attestation-v2        Deploy CoinbaseAttestationV2 (mainnets refused while the test server key is pinned)"
     echo "  mdl-kr-ownership               Deploy MdlKrOwnership (Korea Mobile ID — ownership)"
     echo "  mdl-kr-age                     Deploy MdlKrAge (Korea Mobile ID — age predicate)"
     echo "  mdl-kr-region                  Deploy MdlKrRegion (Korea Mobile ID — region predicate)"
@@ -254,17 +254,25 @@ case $COMMAND in
         SCRIPT_FILE="script/DeployDojangPlayground.s.sol"
         DISPLAY_NAME="DojangPlayground"
         ;;
-    coinbase-app-attest-poc)
-        # PROTOTYPE (branch coinbase-app-attest-poc): testnets only.
+    coinbase-attestation-v2)
+        # Coinbase KYC v2. A verifier built while src/server_key.nr pins the
+        # INSECURE test server key accepts statements anyone can sign, so
+        # mainnets are refused until the real Cloud KMS key is set
+        # (scripts/coinbase-attestation-v2/set-server-key.js --kms ...).
+        # The prototype it replaced (coinbase-app-attest-poc) is on Base
+        # Sepolia, deployments/84532/CoinbaseAppAttestPoc.json; its source is
+        # circuits commit 33344e2.
         case $NETWORK in
             base|mainnet)
-                echo -e "${RED}Error: coinbase-app-attest-poc is a prototype; it is not deployed to $NETWORK${NC}"
-                exit 1
+                if ! node "$SCRIPT_DIR/coinbase-attestation-v2/set-server-key.js" --require-real; then
+                    echo -e "${RED}Error: coinbase-attestation-v2 pins the test server key; not deploying to $NETWORK${NC}"
+                    exit 1
+                fi
                 ;;
         esac
-        SOL_FILE="coinbase-app-attest-poc/target/CoinbaseAppAttestPoc.sol"
-        SCRIPT_FILE="script/DeployCoinbaseAppAttestPoc.s.sol"
-        DISPLAY_NAME="CoinbaseAppAttestPoc"
+        SOL_FILE="coinbase-attestation-v2/target/CoinbaseAttestationV2.sol"
+        SCRIPT_FILE="script/DeployCoinbaseAttestationV2.s.sol"
+        DISPLAY_NAME="CoinbaseAttestationV2"
         ;;
     mdl-kr-ownership)
         SOL_FILE="mdl/kr-ownership/target/MdlKrOwnership.sol"

@@ -1,0 +1,8 @@
+[package]
+name = "probe_sha384_intermediate"
+type = "bin"
+authors = ["zkproofport"]
+
+[dependencies]
+app_attest = { path = "../../../app-attest-libs" }
+sha512 = { tag = "v0.1.1", git = "https://github.com/zkpassport/sha512" }

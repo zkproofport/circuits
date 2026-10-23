@@ -1,10 +1,13 @@
 # Per-part gate probes
 
-Each probe is one slice of `coinbase_app_attest_poc`, compiled on its own so
-`bb gates` can say what that slice costs. They are measurement provenance,
-not circuits: no fixtures, no vk, nothing deployed. Run them through
-`scripts/coinbase-app-attest-poc/measure.sh`, which compiles each and prints
-the table.
+Each probe is one slice of `coinbase_app_attest_poc` (the prototype that
+became `coinbase-attestation-v2/`; its source is circuits commit 33344e2),
+compiled on its own so `bb gates` can say what that slice costs. They are
+measurement provenance, not circuits: no fixtures, no vk, nothing deployed.
+`scripts/coinbase-attestation-v2/measure.sh` still compiles `p384-verify`,
+`cert-der-sha` and `p256-assertion` and prints them beside v2's own probes in
+`../coinbase-attestation-v2/`; the prototype's `coinbase-base` is superseded by
+v2's, which that script generates from v2's main.nr.
 
 | Probe | What it contains |
 |---|---|

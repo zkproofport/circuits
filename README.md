@@ -16,6 +16,8 @@ This repository contains executable circuit code, shared Noir libraries, generat
 
 [`dojang-playground`](dojang-playground) is a GIWA Sepolia demo circuit outside the CIP mapping.
 
+[`coinbase-attestation-v2`](coinbase-attestation-v2) is the next version of CIP-1's circuit, in development on a branch: revocation bound by an Apple App Attest or AI-server statement, an optional EIP-712 action, and a wallet nullifier. Its README has the statement format and measurements. It is not deployed to a mainnet.
+
 `coinbase-libs` is a shared implementation library. `coinbase-kyc` is an older reference-only circuit. `_archived-poc` and `zktls` are outside the current credential CIP mapping.
 
 ## Implemented circuits

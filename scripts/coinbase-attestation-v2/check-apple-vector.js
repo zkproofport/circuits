@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
  * Re-check the real App Attest chain in apple-vector.json against Apple's
- * published root, and print the production `app_attest_ca_key_hash`.
+ * published root, and check the root coinbase_attestation_v2 pins
+ * (coinbase-attestation-v2/src/apple_root.nr) IS that root.
  *
- *   node scripts/coinbase-app-attest-poc/check-apple-vector.js
+ *   node scripts/coinbase-attestation-v2/check-apple-vector.js
  *
  * Downloads Apple_App_Attestation_Root_CA.pem from apple.com (the root's
  * public location) and checks, in order:
@@ -13,13 +14,14 @@
  *   4. the intermediate signed the credential TBS with ecdsa-with-SHA256 --
  *      and NOT with SHA-384, which is why the circuit hashes the credential
  *      certificate with SHA-256.
- * Then prints SHA256(intermediate X || Y): the value a verifier pins as
- * app_attest_ca_key_hash for real devices. This is the off-circuit half of
- * the chain; the circuit takes over from the intermediate key.
+ *   5. the circuit's APPLE_APP_ATTESTATION_ROOT_KEY is the published root key.
+ * The circuit verifies links 2 and 4 itself (app-attest-libs tests run them on
+ * these bytes); this script is the independent check against apple.com.
  */
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { readAppleRoot, APPLE_ROOT_FILE } = require('./anchors');
 
 const ROOT_URL = 'https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem';
 
@@ -51,7 +53,7 @@ async function main() {
     'intermediate signed the credential TBS with SHA-256');
   check(!crypto.verify('sha384', hex(v.credential_tbs), { key: ikey, ...p1363 }, hex(v.credential_sig)),
     'and not with SHA-384');
-  console.log(`app_attest_ca_key_hash (Apple App Attestation CA 1): 0x${crypto.createHash('sha256').update(ik).digest('hex')}`);
+  check(readAppleRoot().equals(rootXY), `the circuit pins apple.com's root (${path.relative(process.cwd(), APPLE_ROOT_FILE)})`);
 }
 
 main().catch(e => {

@@ -86,6 +86,25 @@ pub fn check_attestation_auth_data<let N: u32>(
     assert(aaguid == want, "App Attest environment does not match");
 }
 
+/// The digest the credential key signs in an assertion over clientData,
+/// SHA256(SHA256(authenticatorData || clientDataHash)), after checking the
+/// authenticatorData is for this app with a non-zero counter. Returns
+/// (digest, counter). `client_data_hash` is SHA256(clientData).
+pub fn assertion_digest<let N: u32>(
+    auth_data: [u8; N],
+    auth_len: u32,
+    client_data_hash: [u8; 32],
+    app_id_hash: [u8; 32],
+) -> ([u8; 32], u32) {
+    assert((auth_len >= 37) & (auth_len <= N), "Assertion authenticator data length out of range");
+    zero_past(auth_data, auth_len);
+    let nonce = sha256::sha256_var(append_32(auth_data, auth_len, client_data_hash), auth_len + 32);
+    assert(bytes_at(auth_data, 0, app_id_hash), "Assertion is not for this app");
+    let counter = be32(auth_data, 33);
+    assert(counter > 0, "Assertion counter is zero");
+    (sha256::digest(nonce), counter)
+}
+
 /// The assertion is signed by the credential key over this clientData, for
 /// this app. Returns the counter.
 pub fn verify_assertion<let N: u32, let C: u32>(
@@ -97,19 +116,12 @@ pub fn verify_assertion<let N: u32, let C: u32>(
     signature: [u8; 64],
     app_id_hash: [u8; 32],
 ) -> u32 {
-    assert((auth_len >= 37) & (auth_len <= N), "Assertion authenticator data length out of range");
-    zero_past(auth_data, auth_len);
-    let client_data_hash = sha256::digest(client_data);
-    let nonce = sha256::sha256_var(append_32(auth_data, auth_len, client_data_hash), auth_len + 32);
-    let digest = sha256::digest(nonce);
+    let (digest, counter) = assertion_digest(auth_data, auth_len, sha256::digest(client_data), app_id_hash);
     // std's P-256 verification is a Barretenberg black box; it refuses a
     // high s, so the prover supplies the low form (n - s) when Apple's is high.
     assert(
         std::ecdsa_secp256r1::verify_signature(key_x, key_y, signature, digest),
         "Assertion signature is invalid",
     );
-    assert(bytes_at(auth_data, 0, app_id_hash), "Assertion is not for this app");
-    let counter = be32(auth_data, 33);
-    assert(counter > 0, "Assertion counter is zero");
     counter
 }

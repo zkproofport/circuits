@@ -1,7 +1,7 @@
 #!/bin/bash
 # Acceptance run for a circuit that signs an EIP-712 action OR a signal hash.
 #
-# `giwa_attestation`, `dojang_playground` and `coinbase_app_attest_poc` work this way. The run takes the circuit directory rather
+# `giwa_attestation`, `dojang_playground` and `coinbase_attestation_v2` work this way. The run takes the circuit directory rather
 # than assuming GIWA, so the next circuit with the same branch reuses it instead
 # of growing a second copy -- two copies of an acceptance run is how two
 # circuits come to be checked to different standards.
@@ -58,10 +58,13 @@ case "$CIRCUIT_REL" in
         REGEN="$SCRIPT_DIR/dojang-playground/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/.env.development"
         ;;
-    coinbase-app-attest-poc)
-        # Real Coinbase attestation, synthetic App Attest material. The wallet
-        # key lives in the parent repository's proofport-ai/.env.test.
-        REGEN="$SCRIPT_DIR/coinbase-app-attest-poc/make-fixtures.sh"
+    coinbase-attestation-v2-synthetic-anchors)
+        # coinbase_attestation_v2 with Apple's root and the server key replaced
+        # by keys the fixture generator holds (make-fixtures.sh builds this
+        # copy from the circuit's source; only those two constants differ).
+        # Real Coinbase attestation; the wallet key lives in the parent
+        # repository's proofport-ai/.env.test.
+        REGEN="$SCRIPT_DIR/coinbase-attestation-v2/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
         ;;
     *)
@@ -77,7 +80,7 @@ mkdir -p "$VECTORS"
 # Rebuild them rather than reporting a failure that is really a missing file.
 if [ ! -f Prover.toml ] || [ ! -f Prover.no-action.toml ] \
    || { [ "$CIRCUIT_REL" = dojang-playground ] && [ ! -f "$VECTORS/tx_other_signer.toml" ]; } \
-   || { [ "$CIRCUIT_REL" = coinbase-app-attest-poc ] && [ ! -f "$VECTORS/client_revoked.toml" ]; }; then
+   || { [ "$CIRCUIT_REL" = coinbase-attestation-v2-synthetic-anchors ] && [ ! -f "$VECTORS/client_revoked.toml" ]; }; then
   if [ -f "$REGEN_NEEDS" ]; then
     echo "  fixtures missing -- regenerating"
     $REGEN > "$VECTORS/regenerate.log" 2>&1 || {
@@ -175,29 +178,46 @@ case "$CIRCUIT_REL" in
     echo "Accepted (RLP dropped a leading zero from r or s):"
     accept "short_scalar" "test-vectors/short_scalar"
     ;;
-  coinbase-app-attest-poc)
+  coinbase-attestation-v2-synthetic-anchors)
     node "$TAMPER" Prover.toml "$VECTORS/wrong_signer_root.toml" fill signer_list_merkle_root > /dev/null \
       && refuse "wrong_signer_root" "test-vectors/wrong_signer_root" "Signer not in valid list"
-    node "$TAMPER" Prover.toml "$VECTORS/wrong_ca_key_hash.toml" fill app_attest_ca_key_hash > /dev/null \
-      && refuse "wrong_ca_key_hash" "test-vectors/wrong_ca_key_hash" "App Attest CA key does not match the public key hash"
-    # Each of these needed something re-signed, so the generator wrote them.
-    refuse "cert_bad_signature"        "test-vectors/cert_bad_signature"        "Credential certificate is not signed by the App Attest CA key"
-    refuse "cert_other_ca"             "test-vectors/cert_other_ca"             "App Attest CA key does not match the public key hash"
-    refuse "cert_other_app"            "test-vectors/cert_other_app"            "Credential certificate is for another app"
-    refuse "cert_high_s"               "test-vectors/cert_high_s"               "Signature s value is not in canonical form"
-    refuse "attestation_not_certified" "test-vectors/attestation_not_certified" "Attestation authenticator data is not the one Apple certified"
-    refuse "env_mismatch"              "test-vectors/env_mismatch"              "App Attest environment does not match"
-    refuse "assertion_other_key"       "test-vectors/assertion_other_key"       "Assertion signature is invalid"
-    refuse "assertion_wrong_rpid"      "test-vectors/assertion_wrong_rpid"      "Assertion is not for this app"
-    refuse "assertion_counter_zero"    "test-vectors/assertion_counter_zero"    "Assertion counter is zero"
-    refuse "assertion_high_s"          "test-vectors/assertion_high_s"          "Assertion signature is invalid"
-    refuse "client_wallet_mismatch"    "test-vectors/client_wallet_mismatch"    "clientData wallet is not the proven wallet"
-    refuse "client_revoked"            "test-vectors/client_revoked"            "clientData says the attestation is revoked"
-    refuse "client_other_schema"       "test-vectors/client_other_schema"       "clientData names another EAS schema"
-    refuse "client_other_request"      "test-vectors/client_other_request"      "clientData does not bind this request"
-    refuse "client_other_scope"        "test-vectors/client_other_scope"        "clientData does not bind this scope"
-    refuse "timestamp_changed"         "test-vectors/timestamp_changed"         "clientData timestamp is not the public timestamp"
-    refuse "stale_timestamp_resigned"  "test-vectors/stale_timestamp_resigned"  "clientData timestamp is not the public timestamp"
+    echo ""
+    echo "Accepted (server kind; Prover.toml and Prover.no-action.toml are the app kind):"
+    accept "server_action"               "test-vectors/server_action"
+    accept "server_no_action"            "test-vectors/server_no_action"
+    accept "server_ignores_chain_fields" "test-vectors/server_ignores_chain_fields"
+    echo ""
+    echo "Refused (each needed something re-signed, so the generator wrote them):"
+    refuse "server_other_key"                "test-vectors/server_other_key"                "Statement signature is invalid"
+    refuse "server_client_revoked"           "test-vectors/server_client_revoked"           "clientData says the attestation is revoked"
+    refuse "server_high_s"                   "test-vectors/server_high_s"                   "Statement signature is invalid"
+    refuse "kind_flipped_app_to_server"      "test-vectors/kind_flipped_app_to_server"      "Statement signature is invalid"
+    refuse "kind_flipped_server_to_app"      "test-vectors/kind_flipped_server_to_app"      "No App Attest certificate chain"
+    refuse "kind_zero"                       "test-vectors/kind_zero"                       "Unknown statement signer kind"
+    refuse "kind_unknown"                    "test-vectors/kind_unknown"                    "Unknown statement signer kind"
+    refuse "app_chain_with_server_signature" "test-vectors/app_chain_with_server_signature" "Statement signature is invalid"
+    refuse "app_other_root"                  "test-vectors/app_other_root"                  "Intermediate is not signed by Apple's App Attestation root"
+    refuse "intermediate_key_swapped"        "test-vectors/intermediate_key_swapped"        "Intermediate is not signed by Apple's App Attestation root"
+    refuse "intermediate_not_ca"             "test-vectors/intermediate_not_ca"             "Intermediate is not a CA certificate"
+    refuse "intermediate_high_s"             "test-vectors/intermediate_high_s"             "Signature s value is not in canonical form"
+    refuse "cert_bad_signature"              "test-vectors/cert_bad_signature"              "Credential certificate is not signed by the App Attest intermediate"
+    refuse "cert_other_ca"                   "test-vectors/cert_other_ca"                   "Credential certificate is not signed by the App Attest intermediate"
+    refuse "cert_other_app"                  "test-vectors/cert_other_app"                  "Credential certificate is for another app"
+    refuse "cert_high_s"                     "test-vectors/cert_high_s"                     "Signature s value is not in canonical form"
+    refuse "attestation_not_certified"       "test-vectors/attestation_not_certified"       "Attestation authenticator data is not the one Apple certified"
+    refuse "env_development"                 "test-vectors/env_development"                 "App Attest environment does not match"
+    refuse "assertion_other_key"             "test-vectors/assertion_other_key"             "Statement signature is invalid"
+    refuse "assertion_wrong_rpid"            "test-vectors/assertion_wrong_rpid"            "Assertion is not for this app"
+    refuse "assertion_counter_zero"          "test-vectors/assertion_counter_zero"          "Assertion counter is zero"
+    refuse "assertion_high_s"                "test-vectors/assertion_high_s"                "Statement signature is invalid"
+    refuse "client_wallet_mismatch"          "test-vectors/client_wallet_mismatch"          "clientData wallet is not the proven wallet"
+    refuse "client_revoked"                  "test-vectors/client_revoked"                  "clientData says the attestation is revoked"
+    refuse "client_other_schema"             "test-vectors/client_other_schema"             "clientData names another EAS schema"
+    refuse "client_other_request"            "test-vectors/client_other_request"            "clientData does not bind this request"
+    refuse "client_other_scope"              "test-vectors/client_other_scope"              "clientData does not bind this scope"
+    refuse "timestamp_changed"               "test-vectors/timestamp_changed"               "clientData timestamp is not the public timestamp"
+    refuse "stale_timestamp_resigned"        "test-vectors/stale_timestamp_resigned"        "clientData timestamp is not the public timestamp"
+    EXTRA_PROOFS="server_action"
     ;;
 esac
 
@@ -215,6 +235,21 @@ else
   tail -12 "$VECTORS/prove.log" | sed 's/^/           /'
   FAILED=$((FAILED + 1))
 fi
+
+# A circuit with more than one kind of accepted witness proves each kind, so
+# "proved and verified" is not a statement about one branch only.
+for extra in ${EXTRA_PROOFS:-}; do
+  mkdir -p "./target/proof_$extra"
+  if bb prove -b "$CIRCUIT_JSON" -w "./target/witness_${extra}.gz" -k ./target/vk/vk -o "./target/proof_$extra" -t evm > "$VECTORS/prove_${extra}.log" 2>&1 \
+     && bb verify -p "./target/proof_$extra/proof" -i "./target/proof_$extra/public_inputs" -k ./target/vk/vk -t evm >> "$VECTORS/prove_${extra}.log" 2>&1; then
+    echo "  ok       $extra proved and verified ($(wc -c < "./target/proof_$extra/proof" | tr -d ' ') bytes)"
+    PASSED=$((PASSED + 1))
+  else
+    echo "  FAILED   $extra prove/verify"
+    tail -12 "$VECTORS/prove_${extra}.log" | sed 's/^/           /'
+    FAILED=$((FAILED + 1))
+  fi
+done
 
 echo ""
 echo "  $PASSED passed, $FAILED failed"

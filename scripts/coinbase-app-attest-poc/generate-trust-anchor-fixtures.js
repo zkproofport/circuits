@@ -24,7 +24,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { APP_ID, N_P256, N_P384, TBS_MAX, sha256, credentialTbs, ecKey, signLowS, arr, pad } = require('./generate-prover-toml.js');
+const { APP_ID, N_P256, N_P384, TBS_MAX, sha256, credentialTbs, ecKey, signLowS, arr, pad } = require('../coinbase-attestation-v2/generate-prover-toml.js');
 
 const args = process.argv.slice(2);
 const i = args.indexOf('--probes');

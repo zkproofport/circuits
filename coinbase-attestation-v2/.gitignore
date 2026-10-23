@@ -1,0 +1,20 @@
+# Build output. Committed: the circuit json, the vk, the SHA256SUMS digests,
+# the .srs.toolchain marker, and the Solidity verifier (forge compiles every
+# script under ../script, so it must exist in a fresh checkout).
+#
+# NOT committed: the .srs. At 2^21 it is 134,217,940 bytes, and GitHub refuses
+# any file over 100 MiB (docs.github.com, "About large files on GitHub"), so
+# the app cannot download it from a commit the way it did the prototype's
+# 2^20 one. Where it is hosted is still to be decided (README.md,
+# "Distribution"). SHA256SUMS still lists its digest. Witnesses and proofs
+# stay local.
+target/*
+!target/coinbase_attestation_v2.json
+!target/coinbase_attestation_v2.srs.toolchain
+!target/SHA256SUMS
+!target/CoinbaseAttestationV2.sol
+!target/vk/
+target/vk/*
+!target/vk/vk
+!target/vk/vk_hash
+!target/vk/SHA256SUMS
