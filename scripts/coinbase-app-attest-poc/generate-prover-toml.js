@@ -34,14 +34,12 @@ const fs = require('fs');
 const path = require('path');
 const { ethers } = require('../node_modules/ethers');
 
-const args = process.argv.slice(2);
 const opt = name => {
+  const args = process.argv.slice(2);
   const i = args.indexOf(name);
   if (i === -1 || !args[i + 1]) throw new Error(`${name} is required`);
   return args[i + 1];
 };
-const COINBASE_TOML = path.resolve(opt('--coinbase'));
-const OUT_DIR = path.resolve(opt('--out-dir'));
 
 // ---- constants that must match the circuit ---------------------------------
 const APP_ID = 'R4G32CVY29.com.masselabs.zkproofport';
@@ -195,6 +193,8 @@ const pad = (b, n, what) => {
 };
 
 function main() {
+  const COINBASE_TOML = path.resolve(opt('--coinbase'));
+  const OUT_DIR = path.resolve(opt('--out-dir'));
   if (!process.env.ATTESTED_WALLET_KEY) throw new Error('ATTESTED_WALLET_KEY is required');
   const wallet = new ethers.Wallet(process.env.ATTESTED_WALLET_KEY);
   const cb = parseToml(fs.readFileSync(COINBASE_TOML, 'utf8'));
@@ -385,9 +385,17 @@ assertion_sig = ${arr(as.sig)}
   console.log('attested_at:       ', attestedAt);
 }
 
-try {
-  main();
-} catch (e) {
-  console.error(e.message || e);
-  process.exit(1);
+// The certificate builder and signing helpers are shared with
+// generate-trust-anchor-fixtures.js, so both build the same synthetic chain.
+module.exports = {
+  APP_ID, N_P256, N_P384, TBS_MAX, sha256, seq, tlv, credentialTbs, ecKey, signLowS, p1363ToDer, arr, pad,
+};
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (e) {
+    console.error(e.message || e);
+    process.exit(1);
+  }
 }

@@ -1,0 +1,7 @@
+[package]
+name = "probe_anchor_poseidon2_d4"
+type = "bin"
+authors = ["zkproofport"]
+
+[dependencies]
+trust_anchor = { path = "../trust-anchor-lib" }
