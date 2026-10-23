@@ -11,6 +11,13 @@ Decided 2026-10-23 (`.claude/agents/circuits-dev.md`, "Decisions").
 Not canonical and not deployed. The App Attest material in the fixtures is
 synthetic; nothing here has seen a real device's assertion yet.
 
+The build output the app downloads is committed (`target/<name>.json`, `.srs`,
+`.srs.toolchain`, `SHA256SUMS`, `target/vk/`), so proofport-app's App Attest
+development switch can prove this circuit on a phone from this branch. It is
+read by commit, not by branch name: the app pins the commit that holds these
+files (`proofport-app/src/config/prototypeCircuits.ts`). No verifier contract
+exists for it; proofs are checked off-chain only.
+
 ## What the circuit proves
 
 1. The wallet signed the request -- personal_sign over `signal_hash`, or an

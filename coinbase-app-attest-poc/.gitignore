@@ -1,2 +1,14 @@
-# Prototype: build output is reproducible and not shipped (vk, verifier, SRS).
-target/
+# Prototype build output. Only what proofport-app downloads for its App Attest
+# development switch is committed: the circuit json, its .srs and the marker
+# naming the noir-rs that wrote it, the vk, and the SHA256SUMS the app checks
+# downloads against. Witnesses, proofs and the Solidity verifier stay local.
+target/*
+!target/coinbase_app_attest_poc.json
+!target/coinbase_app_attest_poc.srs
+!target/coinbase_app_attest_poc.srs.toolchain
+!target/SHA256SUMS
+!target/vk/
+target/vk/*
+!target/vk/vk
+!target/vk/vk_hash
+!target/vk/SHA256SUMS
