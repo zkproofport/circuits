@@ -2,8 +2,18 @@
 #
 # Put a locally-generated proof in front of the DEPLOYED verifier contract.
 #
-#   ./scripts/verify-onchain.sh <circuit-dir> <network>
+#   ./scripts/verify-onchain.sh <circuit-dir> <network> [proof-dir]
 #   ./scripts/verify-onchain.sh giwa-attestation giwa-sepolia
+#   ./scripts/verify-onchain.sh oidc-domain-attestation sepolia \
+#       oidc-domain-attestation/test-vectors/proof_google_bound
+#
+# [proof-dir] holds `proof` and `public_inputs`; default <circuit-dir>/target/proof.
+# Circuits whose post-build hook proves acceptance fixtures leave them under
+# test-vectors/proof_<case>/, and target/proof/ stays empty.
+#
+# After the proof returns true, the same proof is sent again with its first
+# public input changed by one bit. That call must revert or return false: a
+# verifier that accepts it is not checking the inputs at all.
 #
 # `build.sh` already runs `bb verify` off-chain at step 6, so a proof that
 # reaches this script has been checked once. That check and this one are not
@@ -22,8 +32,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CIRCUITS_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$CIRCUITS_DIR"
 
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <circuit-dir> <network>" >&2
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "Usage: $0 <circuit-dir> <network> [proof-dir]" >&2
     echo "Example: $0 giwa-attestation giwa-sepolia" >&2
     exit 1
 fi
@@ -31,6 +41,7 @@ fi
 CIRCUIT_DIR_NAME="$1"
 NETWORK="$2"
 TARGET="$CIRCUIT_DIR_NAME/target"
+PROOF_DIR="${3:-$TARGET/proof}"
 
 case "$NETWORK" in
   # GIWA was missing here, which is the whole reason a GIWA-only copy of this
@@ -49,7 +60,7 @@ if [ -z "$RPC_URL" ]; then
     exit 1
 fi
 
-for f in "$TARGET/proof/proof" "$TARGET/proof/public_inputs" "$TARGET/vk/vk"; do
+for f in "$PROOF_DIR/proof" "$PROOF_DIR/public_inputs" "$TARGET/vk/vk"; do
     if [ ! -f "$f" ]; then
         echo "Missing $f" >&2
         echo "  Build the circuit first:  ./scripts/build.sh $CIRCUIT_DIR_NAME" >&2
@@ -82,7 +93,7 @@ echo ""
 # Off-chain first. Reporting an on-chain result without it cannot tell a broken
 # proof from a mismatched contract.
 echo "1. Off-chain (bb verify)..."
-if ! bb verify -p "$TARGET/proof/proof" -i "$TARGET/proof/public_inputs" \
+if ! bb verify -p "$PROOF_DIR/proof" -i "$PROOF_DIR/public_inputs" \
                -k "$TARGET/vk/vk" -t evm >/dev/null 2>&1; then
     echo "   FAILED -- the proof itself does not verify. Nothing to ask the chain." >&2
     exit 1
@@ -91,12 +102,16 @@ echo "   verified"
 echo ""
 
 echo "2. On-chain (eth_call to the deployed verifier)..."
-RESULT=$(python3 - "$TARGET/proof/proof" "$TARGET/proof/public_inputs" "$VERIFIER" "$RPC_URL" <<'PY'
+onchain_call() {
+python3 - "$PROOF_DIR/proof" "$PROOF_DIR/public_inputs" "$VERIFIER" "$RPC_URL" "$1" <<'PY'
 import json, sys, urllib.request
 
-proof_path, inputs_path, verifier, rpc = sys.argv[1:5]
+proof_path, inputs_path, verifier, rpc, mode = sys.argv[1:6]
 proof = open(proof_path, 'rb').read()
 raw_inputs = open(inputs_path, 'rb').read()
+if mode == 'tamper':
+    # Flip the lowest bit of the first public input; stays inside the field.
+    raw_inputs = raw_inputs[:31] + bytes([raw_inputs[31] ^ 1]) + raw_inputs[32:]
 if len(raw_inputs) % 32:
     sys.exit(f'public_inputs is {len(raw_inputs)} bytes, not a multiple of 32')
 words = [raw_inputs[i:i + 32] for i in range(0, len(raw_inputs), 32)]
@@ -142,11 +157,24 @@ if 'error' in answer:
 value = answer['result']
 print('TRUE' if int(value, 16) == 1 else 'FALSE ' + value)
 PY
-)
+}
+RESULT=$(onchain_call honest)
 
 case "$RESULT" in
   TRUE)
     echo "   verified on chain: the deployed contract returned true"
+    echo ""
+    echo "3. On-chain, first public input changed by one bit..."
+    TAMPERED=$(onchain_call tamper)
+    case "$TAMPERED" in
+      TRUE)
+        echo "   FAILED -- the deployed contract accepted a changed public input" >&2
+        exit 1
+        ;;
+      *)
+        echo "   rejected: ${TAMPERED%% *}"
+        ;;
+    esac
     echo ""
     echo "=================================================="
     echo " Verified off-chain AND on-chain: $CIRCUIT_DIR_NAME on $NETWORK"
