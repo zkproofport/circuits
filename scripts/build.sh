@@ -230,11 +230,16 @@ echo ""
 
 echo "8. Generating SRS (reference string)..."
 # A reference string is reused only if the noir-rs that wrote it is the one
-# toolchain.env pins: its size and layout belong to that prover, and a stale
-# one survives a toolchain change silently because the file still exists.
+# toolchain.env pins AND it was written for this circuit's bytecode: its size
+# follows the circuit's size, and a stale one survives either change silently
+# because the file still exists. (Keyed on the toolchain alone, the OIDC v2
+# build on 2026-10-27 reused v1's 2^18 file for a 2^19 circuit.)
 SRS_STAMP="./target/${CIRCUIT_NAME}.srs.toolchain"
-if [ -f "./target/${CIRCUIT_NAME}.srs" ] && [ "$(cat "$SRS_STAMP" 2>/dev/null)" != "$NOIR_RS_TAG" ]; then
-    echo "SRS was written by $(cat "$SRS_STAMP" 2>/dev/null || echo 'an unrecorded noir-rs'); regenerating for ${NOIR_RS_TAG}"
+BYTECODE_SHA=$(python3 -I -c 'import json,sys,hashlib; print(hashlib.sha256(json.load(open(sys.argv[1]))["bytecode"].encode()).hexdigest())' "$CIRCUIT_JSON")
+SRS_STAMP_WANT="${NOIR_RS_TAG} bytecode-sha256:${BYTECODE_SHA}"
+if [ -f "./target/${CIRCUIT_NAME}.srs" ] && [ "$(cat "$SRS_STAMP" 2>/dev/null)" != "$SRS_STAMP_WANT" ]; then
+    echo "SRS was written for: $(cat "$SRS_STAMP" 2>/dev/null || echo 'an unrecorded noir-rs / circuit')"
+    echo "  regenerating for:  ${SRS_STAMP_WANT}"
     rm -f "./target/${CIRCUIT_NAME}.srs"
 fi
 if [ -f "./target/${CIRCUIT_NAME}.srs" ]; then
@@ -258,7 +263,7 @@ if [ ! -f "./target/${CIRCUIT_NAME}.srs" ]; then
     echo "  repository shipped a build with no reference string." >&2
     exit 1
 fi
-echo "$NOIR_RS_TAG" > "$SRS_STAMP"
+echo "$SRS_STAMP_WANT" > "$SRS_STAMP"
 echo "SRS ready: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
 echo ""
 

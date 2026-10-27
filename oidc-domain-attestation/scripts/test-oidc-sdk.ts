@@ -7,6 +7,10 @@
  *   npx tsx scripts/test-oidc-sdk.ts                    # uses gcloud JWT
  *   npx tsx scripts/test-oidc-sdk.ts --prove             # + run nargo/bb proof
  *   JWT=eyJ... npx tsx scripts/test-oidc-sdk.ts          # custom JWT
+ *
+ * Circuit v2 (214 public inputs, 2048-byte partial data, cut at the header's
+ * `.`) needs the AI SDK builder updated to match scripts/oidc-inputs.ts; until
+ * then this produces v1 inputs the circuit refuses.
  */
 
 import { execSync } from 'node:child_process';
