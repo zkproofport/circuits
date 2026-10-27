@@ -44,6 +44,7 @@ EXCLUDED_CHAINS = {
 
 CIRCUITS = [
     ('CoinbaseAttestation', 'Coinbase KYC'),
+    ('CoinbaseAttestationV2', 'Coinbase KYC v2 (pre-release)'),
     ('CoinbaseCountryAttestation', 'Coinbase Country'),
     ('OidcDomainAttestation', 'OIDC Domain'),
     ('MdlKrOwnership', 'Mobile ID ownership'),
@@ -55,6 +56,7 @@ CIRCUITS = [
 EXCLUDED_SCRIPTS = {
     'NullifierRegistry': 'deprecated nullifier registry, not a verifier',
     'ZKProofPortNullifierRegistry': 'deprecated nullifier registry, not a verifier',
+    'CoinbaseAppAttestPoc': 'prototype superseded by coinbase_attestation v2 (2026-10-23), not shipped',
 }
 
 BEGIN = '## Reference deployments\n'
