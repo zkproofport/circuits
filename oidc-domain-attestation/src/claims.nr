@@ -25,6 +25,15 @@
 //    escaped quote cannot end one early. Inside a JSON string every `"` is
 //    escaped, so `"key":` cannot occur inside a claim value at all.
 //
+// 3. A string value is one JSON string. Its length is a prover hint, and the
+//    checks on the bytes around it (closing quote, then `,` or `}`) also hold
+//    at the end of any LATER string claim. Without a check on the bytes in
+//    between, `email` could be read as
+//    `bob@attacker.com","name":"x@victim.com` and its domain proved as
+//    victim.com from a token for bob@attacker.com whose display name the
+//    attacker chose. So no byte of a quoted value may be `"`: with
+//    backslashes refused, an honest value never holds one.
+//
 // What this does NOT rule out: a payload that carries the same key twice. The
 // position of a match is a prover hint, and the circuit does not prove the
 // absence of a second one. Neither provider documents or is known to emit
@@ -83,10 +92,21 @@ pub fn claim_value<let P: u32, let C: u32, let B: u32, let K: u32, let V: u32>(
     key: [u8; K],
     is_value_quoted: bool,
 ) -> BoundedVec<u8, V> {
-    // Safety: every byte returned is compared with the haystack below.
+    // Safety: every byte returned is compared with the haystack in check_value.
     let value: BoundedVec<u8, V> =
         unsafe { extract_value_unconstrained::<P, C, B, K, V>(haystack, key, is_value_quoted) };
+    check_value(haystack, key, is_value_quoted, value);
+    value
+}
 
+/// Constrains `value` to be exactly the value of the top-level `key`. Kept
+/// apart from the hint so tests can hand it a value a dishonest prover would.
+fn check_value<let P: u32, let C: u32, let B: u32, let K: u32, let V: u32>(
+    haystack: StringBody<P, C, B>,
+    key: [u8; K],
+    is_value_quoted: bool,
+    value: BoundedVec<u8, V>,
+) {
     let mut quoted_key: [u8; K + 2] = [0; K + 2];
     quoted_key[0] = QUOTE;
     for i in 0..K {
@@ -119,14 +139,13 @@ pub fn claim_value<let P: u32, let C: u32, let B: u32, let K: u32, let V: u32>(
             assert(haystack.body[value_start + i] == value.storage()[i], "claim value mismatch");
             if is_value_quoted {
                 assert(value.storage()[i] != BACKSLASH, "claim value contains an escape");
+                assert(value.storage()[i] != QUOTE, "claim value contains a quote");
             }
         }
     }
 
     let terminator = haystack.body[after_value];
     assert((terminator == COMMA) | (terminator == CLOSE_BRACE), "claim value is not terminated");
-
-    value
 }
 
 pub fn string_claim<let P: u32, let C: u32, let B: u32, let K: u32, let V: u32>(
@@ -223,4 +242,38 @@ unconstrained fn extract_value_unconstrained<let P: u32, let C: u32, let B: u32,
         }
     }
     value
+}
+
+// The value a dishonest prover would hand over: the email run on to the end
+// of the next string claim. Every other check on it holds (see rule 3).
+global SPAN_PAYLOAD: [u8; 56] = "{\"email\":\"bob@attacker.com\",\"name\":\"x@victim.com\",\"v\":1}".as_bytes();
+
+fn span_haystack() -> StringBody<62, 2, 56> {
+    StringBody::new(SPAN_PAYLOAD, 56)
+}
+
+fn bounded<let N: u32, let V: u32>(bytes: [u8; N]) -> BoundedVec<u8, V> {
+    let mut v: BoundedVec<u8, V> = BoundedVec::new();
+    for i in 0..N {
+        v.push(bytes[i]);
+    }
+    v
+}
+
+#[test]
+fn the_real_email_is_accepted() {
+    let value: BoundedVec<u8, 128> = bounded("bob@attacker.com".as_bytes());
+    check_value(span_haystack(), "email".as_bytes(), true, value);
+}
+
+#[test]
+fn the_hint_reads_the_real_email() {
+    let value: BoundedVec<u8, 128> = string_claim(span_haystack(), "email".as_bytes());
+    assert(equals(value, "bob@attacker.com".as_bytes()));
+}
+
+#[test(should_fail_with = "claim value contains a quote")]
+fn an_email_run_into_the_next_claim_is_refused() {
+    let value: BoundedVec<u8, 128> = bounded("bob@attacker.com\",\"name\":\"x@victim.com".as_bytes());
+    check_value(span_haystack(), "email".as_bytes(), true, value);
 }
