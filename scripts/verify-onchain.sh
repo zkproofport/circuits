@@ -43,6 +43,21 @@ NETWORK="$2"
 TARGET="$CIRCUIT_DIR_NAME/target"
 PROOF_DIR="${3:-$TARGET/proof}"
 
+# Load the RPC URLs the way deploy_verifier.sh does, so the check runs from a
+# plain shell. Values already exported by the caller win.
+case "$NETWORK" in
+  base-sepolia|sepolia|giwa-sepolia) ENV_FILE="$CIRCUITS_DIR/.env.development" ;;
+  base|mainnet) ENV_FILE="$CIRCUITS_DIR/.env.production" ;;
+  *) ENV_FILE="" ;;
+esac
+if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+  while IFS='=' read -r name value; do
+    case "$name" in
+      *_RPC_URL) [ -z "${!name:-}" ] && [ -n "$value" ] && export "$name=${value%\"}" && export "$name=${!name#\"}" ;;
+    esac
+  done < <(grep -E '^[A-Z_]+_RPC_URL=' "$ENV_FILE")
+fi
+
 case "$NETWORK" in
   # GIWA was missing here, which is the whole reason a GIWA-only copy of this
   # check grew under scripts/giwa-poc/. One table, so the next circuit on a new
