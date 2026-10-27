@@ -304,11 +304,17 @@ committed json. Where v2's gates go (`../_probes/coinbase-attestation-v2/`):
 | v2 with the app checks run unconditionally (probe `unconditional-app-checks`) | 1,218,014 |
 | the `if signer_kind == KIND_APP` branch, i.e. v2 minus that | 436,243 |
 
-So the root link alone moves the circuit past 2^20 (1,048,576): even without
-the branch it is 1,218,014, still 2^21. Fitting 2^20 again means not verifying
-Apple's root link in this circuit (pinning CA 1's key, as the prototype did,
-with a circuit release when Apple issues a new intermediate), or splitting it
-into a separate proof.
+The root link's cost INSIDE v2 is not the standalone 385,994: measured by
+removing it from the whole circuit (probe `pinned-intermediate`, Apple's CA 1
+key pinned instead, 2026-10-27) v2 drops from 1,654,257 to 984,404 gates,
+2^20 (vk log size 20), 64,172 under the limit. The difference is predication:
+inside `if signer_kind == KIND_APP` the non-native SHA-384 / P-384 work costs
+more, and the branch overhead falls from 436,243 to 131,334 once the root link
+is out of it. So subtracting 385,994 from 1,654,257 (= 1,268,263, still 2^21)
+is the wrong model. Fitting 2^20 means pinning CA 1's key, as the prototype
+did, with a circuit release (new vk and verifier) when Apple issues a new
+intermediate, or splitting the root link into a separate proof. Per-part
+marginal costs of the pinned circuit: `../_probes/coinbase-attestation-v2/README.md`.
 
 NOT YET MEASURED: `bb prove` wall time and peak RSS. The machine ran at load
 average 108-124 on 18 cores from other workloads for the whole session (one
