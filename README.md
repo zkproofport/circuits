@@ -32,7 +32,7 @@ Extends the Coinbase transaction profile with a private two-byte country code an
 
 Verifies a Google Workspace or Microsoft 365 OIDC JWT with RSA-2048 and proves that its private email ends in a public domain. It exposes a provider identifier and an email-derived scope-bound nullifier.
 
-Provider key authorization, JWT freshness, issuer, audience, and nonce policy are checked by the integrating application alongside the proof.
+v2 (214 public inputs) also checks the provider's issuer in-circuit and binds the token's audience (`aud_hash`), validity window (`iat <= now < exp`) and, on the app path, a request nonce (`nonce_binding`). The verifier still decides which provider keys, client ids and `now` values to accept; see [`oidc-domain-attestation/README.md`](oidc-domain-attestation/README.md). The verifier addresses below were deployed from v1 (148 public inputs) and do not verify v2 proofs.
 
 ### GIWA attestation — PoC
 

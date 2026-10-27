@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate": "npx tsx generate-test-inputs.ts"
+    "fixtures": "tsx make-fixtures.ts"
   },
   "dependencies": {
     "jose": "^5.0.0",
