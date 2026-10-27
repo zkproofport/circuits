@@ -1,5 +1,9 @@
 # coinbase_attestation_v2 gate probes
 
+Since 2026-10-28 the circuit itself pins CA 1 (the `pinned-intermediate`
+design below, 983,451 gates); `root-link`, `sha384-intermediate` and the
+`PINNED = false` control measure the root-pinned design it replaced.
+
 Measurement provenance for `../../coinbase-attestation-v2`, not circuits: no
 fixtures, no vk, nothing deployed. `scripts/coinbase-attestation-v2/measure.sh`
 compiles each and prints `bb gates` beside the whole circuit.

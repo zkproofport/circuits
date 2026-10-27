@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Re-check the real App Attest chain in apple-vector.json against Apple's
- * published root, and check the root coinbase_attestation_v2 pins
- * (coinbase-attestation-v2/src/apple_root.nr) IS that root.
+ * published root, and check the intermediate coinbase_attestation_v2 pins
+ * (coinbase-attestation-v2/src/apple_ca.nr) IS the CA 1 key that root signed.
  *
  *   node scripts/coinbase-attestation-v2/check-apple-vector.js
  *
@@ -14,14 +14,16 @@
  *   4. the intermediate signed the credential TBS with ecdsa-with-SHA256 --
  *      and NOT with SHA-384, which is why the circuit hashes the credential
  *      certificate with SHA-256.
- *   5. the circuit's APPLE_APP_ATTESTATION_ROOT_KEY is the published root key.
- * The circuit verifies links 2 and 4 itself (app-attest-libs tests run them on
- * these bytes); this script is the independent check against apple.com.
+ *   5. the circuit's APPLE_APP_ATTESTATION_CA_KEY is that intermediate key
+ *      (SHA256(X || Y) printed; 0x8ef85f95...747f for CA 1).
+ * app-attest-libs tests verify links 2 and 4 in-circuit on these bytes; the
+ * circuit itself verifies only link 4. This script is the independent check
+ * against apple.com.
  */
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { readAppleRoot, APPLE_ROOT_FILE } = require('./anchors');
+const { readAppleCa, APPLE_CA_FILE } = require('./anchors');
 
 const ROOT_URL = 'https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem';
 
@@ -53,7 +55,8 @@ async function main() {
     'intermediate signed the credential TBS with SHA-256');
   check(!crypto.verify('sha384', hex(v.credential_tbs), { key: ikey, ...p1363 }, hex(v.credential_sig)),
     'and not with SHA-384');
-  check(readAppleRoot().equals(rootXY), `the circuit pins apple.com's root (${path.relative(process.cwd(), APPLE_ROOT_FILE)})`);
+  const pinned = readAppleCa();
+  check(pinned.equals(ik), `the circuit pins the intermediate apple.com's root signed (${path.relative(process.cwd(), APPLE_CA_FILE)}), SHA256(X||Y) = 0x${crypto.createHash('sha256').update(pinned).digest('hex')}`);
 }
 
 main().catch(e => {

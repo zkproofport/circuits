@@ -2,7 +2,9 @@
  * The two trust anchors of coinbase_attestation_v2, as the scripts see them.
  *
  * The circuit pins two public keys as constants:
- *   src/apple_root.nr  Apple App Attestation Root CA (P-384), never changes
+ *   src/apple_ca.nr    Apple App Attestation CA 1, the intermediate (P-384),
+ *                      valid to 2030-03-13 -- a new circuit when Apple
+ *                      replaces it
  *   src/server_key.nr  the AI server's statement key (P-256), ONE line
  *
  * Until the AI server's Cloud KMS key exists, server_key.nr holds the TEST
@@ -11,7 +13,7 @@
  * set-server-key.js swaps the real key in; deploy_verifier.sh refuses a
  * mainnet deploy while the test key is in place.
  *
- * The SYNTHETIC ROOT stands in for Apple's root in the acceptance run's
+ * The SYNTHETIC CA stands in for Apple's intermediate in the acceptance run's
  * synthetic-anchors copy, because no fixture can carry an Apple-signed
  * credential certificate for our App ID with a known device key.
  */
@@ -21,13 +23,13 @@ const path = require('path');
 
 const CIRCUIT_DIR = path.resolve(__dirname, '../../coinbase-attestation-v2');
 const SERVER_KEY_FILE = path.join(CIRCUIT_DIR, 'src/server_key.nr');
-const APPLE_ROOT_FILE = path.join(CIRCUIT_DIR, 'src/apple_root.nr');
+const APPLE_CA_FILE = path.join(CIRCUIT_DIR, 'src/apple_ca.nr');
 
 const N_P256 = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
 const N_P384 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973');
 
 const TEST_SERVER_KEY_SEED = 'ZKProofport coinbase_attestation_v2 INSECURE test server key';
-const SYNTHETIC_ROOT_SEED = 'ZKProofport coinbase_attestation_v2 INSECURE synthetic App Attest root';
+const SYNTHETIC_CA_SEED = 'ZKProofport coinbase_attestation_v2 INSECURE synthetic App Attest intermediate';
 
 /** A key pair whose private scalar is SHA256(seed) (mod n, never zero). */
 function keyFromSeed(seed, curve) {
@@ -50,7 +52,7 @@ function keyFromSeed(seed, curve) {
 }
 
 const testServerKey = () => keyFromSeed(TEST_SERVER_KEY_SEED, 'P-256');
-const syntheticRoot = () => keyFromSeed(SYNTHETIC_ROOT_SEED, 'P-384');
+const syntheticCa = () => keyFromSeed(SYNTHETIC_CA_SEED, 'P-384');
 
 /** X || Y of a P-256 public key in PEM (SPKI), refusing any other curve. */
 function p256FromPem(pem) {
@@ -87,21 +89,22 @@ function writeServerKey(xy, file = SERVER_KEY_FILE) {
   fs.writeFileSync(file, out);
 }
 
-/** Replace the Apple root constant (used only for the synthetic copy). */
-function writeAppleRoot(xy, file) {
+const CA_LINE_RE = /pub global APPLE_APP_ATTESTATION_CA_KEY: \[u8; 96\] = \[([^\]]*)\];/;
+
+/** Replace the Apple intermediate constant (used only for the synthetic copy). */
+function writeAppleCa(xy, file) {
   const src = fs.readFileSync(file, 'utf8');
-  const re = /pub global APPLE_APP_ATTESTATION_ROOT_KEY: \[u8; 96\] = \[[^\]]*\];/;
-  if (!re.test(src)) throw new Error(`${file} has no APPLE_APP_ATTESTATION_ROOT_KEY constant`);
-  fs.writeFileSync(file, src.replace(re, `pub global APPLE_APP_ATTESTATION_ROOT_KEY: [u8; 96] = ${noirBytes(xy)};`));
+  if (!CA_LINE_RE.test(src)) throw new Error(`${file} has no APPLE_APP_ATTESTATION_CA_KEY constant`);
+  fs.writeFileSync(file, src.replace(CA_LINE_RE, `pub global APPLE_APP_ATTESTATION_CA_KEY: [u8; 96] = ${noirBytes(xy)};`));
+  if (!readAppleCa(file).equals(xy)) throw new Error(`${file}: APPLE_APP_ATTESTATION_CA_KEY was not replaced`);
 }
 
-/** Apple's root X || Y as the circuit pins it. */
-function readAppleRoot(file = APPLE_ROOT_FILE) {
-  const src = fs.readFileSync(file, 'utf8');
-  const m = src.match(/pub global APPLE_APP_ATTESTATION_ROOT_KEY: \[u8; 96\] = \[([^\]]*)\];/);
-  if (!m) throw new Error(`${file} has no APPLE_APP_ATTESTATION_ROOT_KEY constant`);
+/** Apple's intermediate X || Y as the circuit pins it. */
+function readAppleCa(file = APPLE_CA_FILE) {
+  const m = fs.readFileSync(file, 'utf8').match(CA_LINE_RE);
+  if (!m) throw new Error(`${file} has no APPLE_APP_ATTESTATION_CA_KEY constant`);
   const bytes = m[1].split(',').map(s => s.trim()).filter(Boolean).map(s => parseInt(s, 16));
-  if (bytes.length !== 96) throw new Error(`${file}: the root key is ${bytes.length} bytes, not 96`);
+  if (bytes.length !== 96) throw new Error(`${file}: the CA key is ${bytes.length} bytes, not 96`);
   return Buffer.from(bytes);
 }
 
@@ -111,7 +114,7 @@ const isTestServerKey = xy => {
 };
 
 module.exports = {
-  CIRCUIT_DIR, SERVER_KEY_FILE, APPLE_ROOT_FILE, N_P256, N_P384,
-  keyFromSeed, testServerKey, syntheticRoot, p256FromPem,
-  readServerKey, writeServerKey, writeAppleRoot, readAppleRoot, isTestServerKey,
+  CIRCUIT_DIR, SERVER_KEY_FILE, APPLE_CA_FILE, N_P256, N_P384,
+  keyFromSeed, testServerKey, syntheticCa, p256FromPem,
+  readServerKey, writeServerKey, writeAppleCa, readAppleCa, isTestServerKey,
 };

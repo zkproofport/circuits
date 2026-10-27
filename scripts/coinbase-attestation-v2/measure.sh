@@ -45,9 +45,9 @@ python3 -I - "$V2/src/main.nr" "$PROBES/coinbase-base/src/main.nr" <<'PY'
 import re, sys
 src = open(sys.argv[1]).read()
 body = src[src.index('mod client_data;'):]
-for line in ['mod client_data;\n', 'mod apple_root;\n', 'mod server_key;\n',
+for line in ['mod client_data;\n', 'mod apple_ca;\n', 'mod server_key;\n',
              'use client_data::{CLIENT_DATA_LEN, check_client_data};\n',
-             'use apple_root::APPLE_APP_ATTESTATION_ROOT_KEY;\n', 'use server_key::SERVER_KEY;\n']:
+             'use apple_ca::APPLE_APP_ATTESTATION_CA_KEY;\n', 'use server_key::SERVER_KEY;\n']:
     if line not in body:
         sys.exit(f'{line.strip()} not in main.nr: the probe generator is stale')
     body = body.replace(line, '')

@@ -12,28 +12,29 @@
  *
  * TWO TARGETS.
  *   --synthetic-dir  the synthetic-anchors copy of the circuit (make-fixtures.sh
- *                    makes it): Apple's root replaced by SYNTHETIC_ROOT
+ *                    makes it): Apple's CA 1 replaced by the SYNTHETIC CA
  *                    (anchors.js), the server key by the test key. Every
  *                    acceptance and refusal case runs here, because no fixture
  *                    can carry an Apple-signed credential certificate for our
  *                    App ID together with that device's private key.
  *                    Writes Prover.toml (app kind, EIP-712 action),
  *                    Prover.no-action.toml, and test-vectors/*.toml.
- *   --real-dir       the real circuit, Apple's root pinned. Writes
+ *   --real-dir       the real circuit, Apple's CA 1 pinned. Writes
  *                    test-vectors/real_*.toml: a server-kind statement (accepted
- *                    while the test key is pinned), the synthetic chain (refused:
- *                    not Apple's root), and Apple's REAL root -> CA 1 ->
- *                    credential chain (zkPassport's vector), which must pass
- *                    both P-384 checks and stop at the App ID.
+ *                    while the test key is pinned, refused after the swap), the
+ *                    synthetic chain (refused: not signed by Apple's CA 1), and
+ *                    a REAL credential certificate CA 1 signed (zkPassport's
+ *                    vector), which must pass the P-384 check and stop at the
+ *                    App ID.
  *
  * WHAT IS REAL. raw_transaction, the attester key, the signer Merkle proof
  * and root come from coinbase-attestation/Prover.toml, which
  * proofport-ai/scripts/gen-prover-toml.ts builds from Base. apple-vector.json
  * is a real Apple chain. The wallet signs a fresh request here.
  *
- * HOW THE SYNTHETIC CHAIN DIFFERS FROM APPLE'S. The intermediate copies CA 1's
- * structure (names, validity layout, the four extensions, ecdsa-with-SHA384)
- * with our own key and serial. The credential certificate copies the real
+ * HOW THE SYNTHETIC CHAIN DIFFERS FROM APPLE'S. The intermediate is only a
+ * key (anchors.js syntheticCa, pinned in the copy as CA 1 is in the circuit).
+ * The credential certificate copies the real
  * one's structure (field order, attribute types, extensions and OIDs; the 8.5
  * items with our App ID; the 8.7 extension verbatim; the nonce computed).
  * Assertion flags are 0x00; no CBOR extensions in either authData.
@@ -60,7 +61,6 @@ const COINBASE_ATTESTER = ethers.getBytes('0x357458739F90461b99789350868CD7CF330
 const SCOPE_STRING = 'proofport';
 const KIND_APP = 1;
 const KIND_SERVER = 2;
-const ITBS_MAX = 600;
 const TBS_MAX = 1000;
 const ATT_AUTH_MAX = 256;
 const ASSERT_AUTH_MAX = 128;
@@ -114,27 +114,6 @@ const OID_O = '55040a';
 const OID_ST = '550408';
 const utcTime = d => tlv(0x17, Buffer.from(d.toISOString().replace(/[-:T]/g, '').slice(2, 14) + 'Z'));
 const SIG_ALG_SHA256 = Buffer.from('300a06082a8648ce3d040302', 'hex');
-const SIG_ALG_SHA384 = Buffer.from('300a06082a8648ce3d040303', 'hex');
-
-// The intermediate, in "Apple App Attestation CA 1"'s shape. `ca` false
-// writes basicConstraints with cA FALSE (still critical, same length).
-function intermediateTbs({ key, serial, ca = true }) {
-  return seq(
-    Buffer.from('a003020102', 'hex'),
-    tlv(0x02, serial),
-    SIG_ALG_SHA384,
-    seq(rdn(OID_CN, 'Apple App Attestation Root CA'), rdn(OID_O, 'Apple Inc.'), rdn(OID_ST, 'California')),
-    seq(tlv(0x17, Buffer.from('200318183955Z')), tlv(0x17, Buffer.from('300313000000Z'))),
-    seq(rdn(OID_CN, 'Apple App Attestation CA 1'), rdn(OID_O, 'Apple Inc.'), rdn(OID_ST, 'California')),
-    Buffer.concat([Buffer.from('3076301006072a8648ce3d020106052b8104002203620004', 'hex'), key.x, key.y]),
-    tlv(0xa3, seq(
-      Buffer.from(ca ? '30120603551d130101ff040830060101ff020100' : '30120603551d130101ff04083006010100020100', 'hex'),
-      seq(oid('551d23'), tlv(0x04, seq(tlv(0x80, sha256(Buffer.from('root')).subarray(0, 20))))),
-      seq(oid('551d0e'), tlv(0x04, tlv(0x04, sha256(key.x).subarray(0, 20)))),
-      Buffer.from('300e0603551d0f0101ff040403020106', 'hex'),
-    )),
-  );
-}
 
 // The 8.5 items of the real certificate, in order, with [1204] (the App ID)
 // rebuilt for whichever id is asked for.
@@ -298,28 +277,18 @@ function main() {
     r.userSignature = ethers.getBytes(ethers.concat([sig.r, sig.s]));
   }
 
-  // ---- anchors: the synthetic root and the server test key -------------------
-  const root = anchors.syntheticRoot();
-  const otherRoot = ecKey('secp384r1');
+  // ---- anchors: the synthetic CA and the server test key ---------------------
+  const inter = anchors.syntheticCa();
+  const otherInter = ecKey('secp384r1');
   const server = anchors.testServerKey();
   const otherServer = ecKey('prime256v1');
-  const syntheticRootXY = Buffer.concat([root.x, root.y]);
-  // The real circuit must pin Apple's root, never the synthetic one.
-  if (anchors.readAppleRoot().equals(syntheticRootXY)) throw new Error('the real circuit pins the synthetic root');
+  const syntheticCaXY = Buffer.concat([inter.x, inter.y]);
+  // The real circuit must pin Apple's CA 1, never the synthetic one.
+  if (anchors.readAppleCa().equals(syntheticCaXY)) throw new Error('the real circuit pins the synthetic CA');
 
   // ---- one synthetic device ---------------------------------------------------
-  const inter = ecKey('secp384r1');
-  const otherInter = ecKey('secp384r1');
   const cred = ecKey('prime256v1');
   const otherCred = ecKey('prime256v1');
-
-  const iSerial = Buffer.concat([Buffer.from([0x09]), crypto.randomBytes(15)]);
-  const iTbs = intermediateTbs({ key: inter, serial: iSerial });
-  const iSig = signLowS('sha384', iTbs, root, N_P384, 48);
-  if (!new crypto.X509Certificate(certDer(iTbs, SIG_ALG_SHA384, iSig, 48)).verify(root.publicKey)) {
-    throw new Error('synthetic intermediate does not verify under the synthetic root');
-  }
-  if (iTbs.length > ITBS_MAX) throw new Error(`intermediate TBS is ${iTbs.length} bytes`);
 
   const keyId = sha256(Buffer.from([4]), cred.x, cred.y);
   const serial = Buffer.concat([Buffer.from([0x01]), crypto.randomBytes(5)]);
@@ -363,7 +332,7 @@ function main() {
   }
 
   const EMPTY_CHAIN = {
-    iTbs: Buffer.alloc(0), iSig: Buffer.alloc(96), tbs: Buffer.alloc(0), certSig: Buffer.alloc(96),
+    tbs: Buffer.alloc(0), certSig: Buffer.alloc(96),
     attAuth: Buffer.alloc(0), attCdh: Buffer.alloc(32), assertAuth: Buffer.alloc(0),
   };
 
@@ -377,7 +346,6 @@ function main() {
     if (kindName === 'app') {
       const as = o.assertion ?? assertion(cd);
       chain = {
-        iTbs: o.iTbs ?? iTbs, iSig: o.iSig ?? iSig,
         tbs: o.tbs ?? dev.tbs, certSig: o.certSig ?? dev.sig,
         attAuth: o.attAuth ?? dev.attAuth, attCdh: o.attCdh ?? attCdh, assertAuth: as.auth,
       };
@@ -420,9 +388,6 @@ client_data = ${arr(cd)}
 signer_kind = ${kindByte}
 statement_sig = ${arr(statementSig)}
 
-intermediate_tbs = ${arr(pad(chain.iTbs, ITBS_MAX, 'intermediate TBS'))}
-intermediate_tbs_len = ${chain.iTbs.length}
-intermediate_sig = ${arr(chain.iSig)}
 credential_tbs = ${arr(pad(chain.tbs, TBS_MAX, 'TBS'))}
 credential_tbs_len = ${chain.tbs.length}
 credential_sig = ${arr(chain.certSig)}
@@ -452,16 +417,13 @@ assertion_auth_data_len = ${chain.assertAuth.length}
   const appCd = clientData(A);
   const devEnv = device(AAGUID_DEV);
   const otherApp = device(AAGUID_PROD, otherAppId);
-  // An intermediate the attacker made: their own P-384 key in CA 1's shape.
-  const swappedITbs = intermediateTbs({ key: otherInter, serial: iSerial });
-  const notCaITbs = intermediateTbs({ key: inter, serial: iSerial, ca: false });
 
   const cases = {
     // ---- server kind
     server_action: { kind: 'server' },
     server_ignores_chain_fields: {
       kind: 'server',
-      chain: { iTbs, iSig, tbs: dev.tbs, certSig: dev.sig, attAuth: dev.attAuth, attCdh, assertAuth: assertion(appCd).auth },
+      chain: { tbs: dev.tbs, certSig: dev.sig, attAuth: dev.attAuth, attCdh, assertAuth: assertion(appCd).auth },
     },
     server_other_key: { kind: 'server', serverKey: otherServer },
     server_client_revoked: { kind: 'server', clientData: clientData(A, { revoked: 1 }) },
@@ -474,15 +436,6 @@ assertion_auth_data_len = ${chain.assertAuth.length}
     kind_zero: { kind: 'server', kindByte: 0 },
     kind_unknown: { kind: 'server', kindByte: 3 },
     app_chain_with_server_signature: { statementSig: serverSign(appCd, server) },
-    // ---- Apple's root -> intermediate
-    app_other_root: { iSig: signLowS('sha384', iTbs, otherRoot, N_P384, 48) },
-    intermediate_key_swapped: {
-      iTbs: swappedITbs,
-      tbs: dev.tbs,
-      certSig: signLowS('sha256', dev.tbs, otherInter, N_P384, 48),
-    },
-    intermediate_not_ca: { iTbs: notCaITbs, iSig: signLowS('sha384', notCaITbs, root, N_P384, 48) },
-    intermediate_high_s: { iSig: highS(iSig, N_P384, 48) },
     // ---- intermediate -> credential
     cert_bad_signature: { certSig: reSignCred(otherCredTbs) },
     cert_other_ca: { certSig: signLowS('sha256', dev.tbs, otherInter, N_P384, 48) },
@@ -512,26 +465,24 @@ assertion_auth_data_len = ${chain.assertAuth.length}
   }
   syn(path.join('test-vectors', 'server_no_action.toml'), toml(requests.noAction, { kind: 'server', label: 'server_no_action' }));
 
-  // ---- the real circuit (Apple's root pinned) ----------------------------------
+  // ---- the real circuit (Apple's CA 1 pinned) ---------------------------------
   const real = writer(REAL_DIR);
   real(path.join('test-vectors', 'real_server_action.toml'), toml(A, { kind: 'server', label: 'real_server_action' }));
-  real(path.join('test-vectors', 'real_synthetic_root.toml'), toml(A, { label: 'real_synthetic_root' }));
+  real(path.join('test-vectors', 'real_synthetic_ca.toml'), toml(A, { label: 'real_synthetic_ca' }));
   const v = JSON.parse(fs.readFileSync(path.join(__dirname, 'apple-vector.json'), 'utf8'));
   const hex = h => Buffer.from(h, 'hex');
-  if (!anchors.readAppleRoot().equals(hex(v.root_key_xy))) throw new Error('the real circuit does not pin apple-vector.json\'s root');
+  if (!anchors.readAppleCa().equals(hex(v.intermediate_key_xy))) throw new Error('the real circuit does not pin apple-vector.json\'s intermediate (CA 1)');
   real(path.join('test-vectors', 'real_apple_chain.toml'), toml(A, {
-    label: 'real_apple_chain: Apple root -> CA 1 -> zkPassport credential (another App ID)',
-    iTbs: hex(v.intermediate_tbs),
-    iSig: toLowS(hex(v.intermediate_sig), N_P384, 48),
+    label: 'real_apple_chain: CA 1 -> zkPassport credential (another App ID)',
     tbs: hex(v.credential_tbs),
     certSig: toLowS(hex(v.credential_sig), N_P384, 48),
   }));
 
   console.log('wallet:            ', wallet.address);
   console.log('App ID:            ', APP_ID);
-  console.log('synthetic root:    ', syntheticRootXY.toString('hex'));
+  console.log('synthetic CA:      ', syntheticCaXY.toString('hex'));
   console.log('server test key:   ', Buffer.concat([server.x, server.y]).toString('hex'));
-  console.log('intermediate TBS:  ', iTbs.length, 'bytes; credential TBS', dev.tbs.length, 'bytes; attestation authData', dev.attAuth.length, 'bytes');
+  console.log('credential TBS:    ', dev.tbs.length, 'bytes; attestation authData', dev.attAuth.length, 'bytes');
   console.log('attested_at:       ', attestedAt);
 }
 

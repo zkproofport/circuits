@@ -4,8 +4,8 @@
 #   scripts/coinbase-attestation-v2/make-fixtures.sh
 #
 # 1. Rebuilds circuits/coinbase-attestation-v2-synthetic-anchors/ from the
-#    circuit's CURRENT source: identical except src/apple_root.nr (Apple's root
-#    -> SYNTHETIC_ROOT) and src/server_key.nr (-> the INSECURE test key), both
+#    circuit's CURRENT source: identical except src/apple_ca.nr (Apple's CA 1
+#    -> the SYNTHETIC CA) and src/server_key.nr (-> the INSECURE test key), both
 #    from anchors.js. It refuses to continue if any other file differs. The
 #    copy is a sibling so the ../deps and ../app-attest-libs paths resolve; it
 #    is gitignored. Then compiles it and writes its vk (bb write_vk -t evm),
@@ -45,8 +45,8 @@ cp -R "$REAL/Nargo.toml" "$REAL/src" "$SYN/"
 node -e '
   const a = require(process.argv[1]);
   const [syn] = process.argv.slice(2);
-  const r = a.syntheticRoot();
-  a.writeAppleRoot(Buffer.concat([r.x, r.y]), syn + "/src/apple_root.nr");
+  const c = a.syntheticCa();
+  a.writeAppleCa(Buffer.concat([c.x, c.y]), syn + "/src/apple_ca.nr");
   const s = a.testServerKey();
   a.writeServerKey(Buffer.concat([s.x, s.y]), syn + "/src/server_key.nr");
 ' "$HERE/anchors.js" "$SYN"
@@ -54,7 +54,7 @@ node -e '
 # test a circuit other than the one shipped.
 DIFFS=$(diff -rq "$REAL/src" "$SYN/src" | sed 's#.*/src/\([^ ]*\) and.*#\1#' | sort | tr '\n' ' ')
 case "$DIFFS" in
-  "apple_root.nr "|"apple_root.nr server_key.nr ") ;;
+  "apple_ca.nr "|"apple_ca.nr server_key.nr ") ;;
   *) echo "synthetic-anchors copy differs from the circuit in: $DIFFS" >&2; exit 1 ;;
 esac
 diff -q "$REAL/Nargo.toml" "$SYN/Nargo.toml" > /dev/null

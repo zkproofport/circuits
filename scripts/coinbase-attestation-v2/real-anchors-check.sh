@@ -1,16 +1,15 @@
 #!/bin/bash
-# The cases that must run against the REAL circuit, Apple's root pinned.
+# The cases that must run against the REAL circuit, Apple's CA 1 pinned.
 #
 #   scripts/coinbase-attestation-v2/real-anchors-check.sh
 #
 # Every other case runs in the synthetic-anchors copy (make-fixtures.sh), so
 # this is what shows the shipped constants are the ones intended:
-#   real_apple_chain     Apple's real root -> "Apple App Attestation CA 1" ->
-#                        a real credential certificate (zkPassport's app). Both
-#                        P-384 checks must PASS in this circuit, and the proof
-#                        must stop at the App ID -- the only check that real
-#                        chain cannot meet.
-#   real_synthetic_root  A chain under the synthetic root: refused, not Apple's.
+#   real_apple_chain     A real credential certificate (zkPassport's app) signed
+#                        by "Apple App Attestation CA 1". The P-384 check must
+#                        PASS in this circuit, and the proof must stop at the
+#                        App ID -- the only check that real chain cannot meet.
+#   real_synthetic_ca    A chain under the synthetic CA: refused, not Apple's.
 #   real_server_action   A server-kind statement signed by the TEST key:
 #                        accepted while server_key.nr pins the test key,
 #                        refused once the real key is in.
@@ -24,7 +23,7 @@ CIRCUITS="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REAL="$CIRCUITS/coinbase-attestation-v2"
 VECTORS="$REAL/test-vectors"
 
-for f in real_apple_chain real_synthetic_root real_server_action; do
+for f in real_apple_chain real_synthetic_ca real_server_action; do
   [ -f "$VECTORS/$f.toml" ] || { echo "$VECTORS/$f.toml missing: run scripts/coinbase-attestation-v2/make-fixtures.sh" >&2; exit 1; }
 done
 
@@ -49,9 +48,9 @@ run() {
 }
 
 echo ""
-echo "Real circuit (Apple's root and server_key.nr as committed):"
+echo "Real circuit (Apple's CA 1 and server_key.nr as committed):"
 run real_apple_chain "Credential certificate is for another app"
-run real_synthetic_root "Intermediate is not signed by Apple's App Attestation root"
+run real_synthetic_ca "Credential certificate is not signed by the App Attest intermediate"
 if node "$SCRIPT_DIR/set-server-key.js" --show | grep -q "INSECURE TEST KEY"; then
   run real_server_action accept
   echo "  NOTE     server_key.nr pins the INSECURE test key; mainnet deploys are refused"

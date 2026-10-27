@@ -4,15 +4,18 @@
 #   scripts/coinbase-attestation-v2/mutation-check.sh [fixture-regex]
 #
 # With a regex, only cases whose fixture name matches run (each case compiles
-# the whole 2^21 circuit, about five minutes on an idle M5 Pro).
+# the whole 2^20 circuit).
 #
 # For each case below: copy the synthetic-anchors circuit (and the App Attest
 # library) to sibling directories, apply ONE mutation, and run the named
 # refusal fixture. The mutant must ACCEPT it -- otherwise something else was
 # doing the refusing and the acceptance case proves nothing about that code.
-#   delete|<assert message>|<fixture>     delete the one line carrying the message
+#   delete~<assert message>~<fixture>     delete the one line carrying the message
 #                                         (single-line asserts only)
-#   replace|<exact text>|<new text>|<fixture>  replace text occurring exactly once
+#   replace~<exact text>~<new text>~<fixture>  replace text occurring exactly once
+# The separator is `~` because the texts contain Noir's `|` (boolean or). With
+# `|` as the separator, five cases split in the wrong places and compiled
+# broken mutants that "still refused" for the wrong reason (found 2026-10-28).
 # The originals are never edited; the copies are removed on exit.
 #
 # Needs the synthetic-anchors copy and its fixtures
@@ -28,28 +31,27 @@ MUTANT_LIB="$CIRCUITS/app-attest-libs-mutant"
 
 CASES=(
   # The statement (client_data.nr)
-  "delete|clientData wallet is not the proven wallet|client_wallet_mismatch"
-  "delete|clientData says the attestation is revoked|client_revoked"
-  "delete|clientData does not bind this request|client_other_request"
-  "delete|clientData does not bind this scope|client_other_scope"
-  "delete|clientData timestamp is not the public timestamp|timestamp_changed"
-  "delete|clientData names another EAS schema|client_other_schema"
+  "delete~clientData wallet is not the proven wallet~client_wallet_mismatch"
+  "delete~clientData says the attestation is revoked~client_revoked"
+  "delete~clientData does not bind this request~client_other_request"
+  "delete~clientData does not bind this scope~client_other_scope"
+  "delete~clientData timestamp is not the public timestamp~timestamp_changed"
+  "delete~clientData names another EAS schema~client_other_schema"
   # The signer kind (main.nr)
   # Multi-line asserts are neutralised by replacing their condition: deleting
   # only the message line would leave a message-less assert that still refuses.
-  "replace|        (signer_kind == KIND_APP) | (signer_kind == KIND_SERVER),|        true,|kind_unknown"
-  "replace|        (signer_kind == KIND_APP) | (signer_kind == KIND_SERVER),|        true,|kind_zero"
-  "replace|    if signer_kind == KIND_APP {|    if false {|app_chain_with_server_signature"
-  "replace|        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),|        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),|server_other_key"
-  "replace|        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),|        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),|assertion_other_key"
-  # Apple's chain (app-attest-libs)
-  "replace|        verify_intermediate_signature(|        true | verify_intermediate_signature(|app_other_root"
-  "replace|        verify_intermediate_signature(|        true | verify_intermediate_signature(|intermediate_key_swapped"
-  "delete|Intermediate is not a CA certificate|intermediate_not_ca"
-  "replace|        verify_credential_signature(|        true | verify_credential_signature(|cert_other_ca"
-  "delete|App Attest environment does not match|env_development"
-  "delete|Assertion is not for this app|assertion_wrong_rpid"
-  "delete|Assertion counter is zero|assertion_counter_zero"
+  "replace~        (signer_kind == KIND_APP) | (signer_kind == KIND_SERVER),~        true,~kind_unknown"
+  "replace~        (signer_kind == KIND_APP) | (signer_kind == KIND_SERVER),~        true,~kind_zero"
+  "replace~    if signer_kind == KIND_APP {~    if false {~app_chain_with_server_signature"
+  "replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),~server_other_key"
+  "replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),~assertion_other_key"
+  # Apple's chain under the pinned CA (app-attest-libs). The root -> intermediate
+  # link is not in this circuit (CA 1 is pinned); its checks are the
+  # library's unit tests.
+  "replace~        verify_credential_signature(~        true | verify_credential_signature(~cert_other_ca"
+  "delete~App Attest environment does not match~env_development"
+  "delete~Assertion is not for this app~assertion_wrong_rpid"
+  "delete~Assertion counter is zero~assertion_counter_zero"
 )
 
 [ -f "$SYN/test-vectors/client_revoked.toml" ] || { echo "fixtures missing: run scripts/coinbase-attestation-v2/make-fixtures.sh" >&2; exit 1; }
@@ -62,7 +64,7 @@ PASSED=0
 FAILED=0
 ONLY="${1:-}"
 for c in "${CASES[@]}"; do
-  IFS='|' read -r kind a b d <<< "$c"
+  IFS='~' read -r kind a b d <<< "$c"
   if [ "$kind" = delete ]; then msg="$a"; vector="$b"; label="without \"$msg\""
   else from="$a"; to="$b"; vector="$d"; label="with \"$(echo "$from" | sed 's/^ *//')\" -> \"$(echo "$to" | sed 's/^ *//')\""; fi
   if [ -n "$ONLY" ] && ! echo "$vector" | grep -Eq "$ONLY"; then continue; fi

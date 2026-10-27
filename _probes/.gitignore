@@ -1,2 +1,4 @@
 target/
 coinbase-attestation-v2/pinned-intermediate-variants/
+coinbase-attestation-v2/coinbase-base/
+coinbase-attestation-v2/unconditional-app-checks/

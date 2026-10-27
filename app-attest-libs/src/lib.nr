@@ -2,10 +2,20 @@
 // on a genuine Apple device, signed this clientData".
 //
 // The chain is Apple root -> App Attest intermediate CA -> credential
-// certificate (one per app key) -> assertion (one per request). The caller
-// pins ONLY the root key (a circuit constant); every link below it is
-// verified here from private inputs, the way zkPassport verifies FaceMatch.
-// So Apple replacing the intermediate changes nothing in the circuit.
+// certificate (one per app key) -> assertion (one per request). Two entry
+// points:
+//   app_attest_signing_key           the caller pins Apple's ROOT key and the
+//                                    intermediate is verified here (SHA-384,
+//                                    P-384, cA = TRUE) -- what zkPassport does;
+//   app_attest_signing_key_under_ca  the caller pins the INTERMEDIATE's key
+//                                    and everything from the credential
+//                                    certificate down is verified here.
+// coinbase_attestation_v2 uses the second (decided 2026-10-27,
+// .claude/agents/circuits-dev.md): the root link costs it 669,935 gates and
+// a 2^21 circuit; pinning "Apple App Attestation CA 1" keeps it at 2^20, at
+// the price of a circuit release when Apple replaces that intermediate
+// (valid to 2030-03-13). The first stays, with its tests on Apple's real
+// root -> CA 1 chain, because it is how that intermediate key was checked.
 
 pub mod der;
 pub mod intermediate;
@@ -45,18 +55,31 @@ pub struct AppAttestChain<let ITBS: u32, let TBS: u32, let ATT: u32, let ASSERT:
     pub assertion_auth_data_len: u32,
 }
 
+/// AppAttestChain without the intermediate: what a device contributes when
+/// the caller pins the intermediate CA's key.
+pub struct CredentialChain<let TBS: u32, let ATT: u32, let ASSERT: u32> {
+    pub credential_tbs: [u8; TBS],
+    pub credential_tbs_len: u32,
+    pub credential_sig: [u8; 96],
+    pub att_auth_data: [u8; ATT],
+    pub att_auth_data_len: u32,
+    pub att_client_data_hash: [u8; 32],
+    pub assertion_auth_data: [u8; ASSERT],
+    pub assertion_auth_data_len: u32,
+}
+
 /// The credential key, the digest it must have signed for `client_data_hash`,
-/// and the assertion counter. Asserts every link from `root` down:
-///   root --SHA-384/P-384--> intermediate (a CA, P-384 key)
-///        --SHA-256/P-384--> credential certificate (our App ID, P-256 key,
-///                           Apple's nonce)
+/// and the assertion counter, under a PINNED intermediate CA key (P-384,
+/// X and Y). Asserts:
+///   ca --SHA-256/P-384--> credential certificate (our App ID, P-256 key,
+///                         Apple's nonce)
 ///   attestation authData hashes to that nonce, is for our app, counter 0,
 ///   AAGUID of the requested environment
 ///   assertion authData is for our app, counter > 0
-pub fn app_attest_signing_key<let ITBS: u32, let TBS: u32, let ATT: u32, let ASSERT: u32, let A: u32>(
-    chain: AppAttestChain<ITBS, TBS, ATT, ASSERT>,
-    root_x: [u8; 48],
-    root_y: [u8; 48],
+pub fn app_attest_signing_key_under_ca<let TBS: u32, let ATT: u32, let ASSERT: u32, let A: u32>(
+    chain: CredentialChain<TBS, ATT, ASSERT>,
+    ca_x: [u8; 48],
+    ca_y: [u8; 48],
     app_id: [u8; A],
     app_id_hash: [u8; 32],
     production: bool,
@@ -65,34 +88,17 @@ pub fn app_attest_signing_key<let ITBS: u32, let TBS: u32, let ATT: u32, let ASS
     // A caller that branches (coinbase-attestation-v2's server kind passes
     // zeros here) gets a named refusal instead of the first library assert
     // the zeros happen to trip.
-    assert(chain.intermediate_tbs_len != 0, "No App Attest certificate chain");
+    assert(chain.credential_tbs_len != 0, "No App Attest certificate chain");
     let mut r: [u8; 48] = [0; 48];
     let mut s: [u8; 48] = [0; 48];
-    for i in 0..48 {
-        r[i] = chain.intermediate_sig[i];
-        s[i] = chain.intermediate_sig[48 + i];
-    }
-    assert(
-        verify_intermediate_signature(
-            root_x,
-            root_y,
-            chain.intermediate_tbs,
-            chain.intermediate_tbs_len,
-            r,
-            s,
-        ),
-        "Intermediate is not signed by Apple's App Attestation root",
-    );
-    let ca = parse_intermediate_tbs(chain.intermediate_tbs, chain.intermediate_tbs_len);
-
     for i in 0..48 {
         r[i] = chain.credential_sig[i];
         s[i] = chain.credential_sig[48 + i];
     }
     assert(
         verify_credential_signature(
-            ca.x,
-            ca.y,
+            ca_x,
+            ca_y,
             chain.credential_tbs,
             chain.credential_tbs_len,
             r,
@@ -119,4 +125,64 @@ pub fn app_attest_signing_key<let ITBS: u32, let TBS: u32, let ATT: u32, let ASS
         app_id_hash,
     );
     (key.x, key.y, digest, counter)
+}
+
+/// The credential key, the digest it must have signed for `client_data_hash`,
+/// and the assertion counter. Asserts every link from `root` down:
+///   root --SHA-384/P-384--> intermediate (a CA, P-384 key)
+///        --SHA-256/P-384--> credential certificate (our App ID, P-256 key,
+///                           Apple's nonce)
+///   attestation authData hashes to that nonce, is for our app, counter 0,
+///   AAGUID of the requested environment
+///   assertion authData is for our app, counter > 0
+pub fn app_attest_signing_key<let ITBS: u32, let TBS: u32, let ATT: u32, let ASSERT: u32, let A: u32>(
+    chain: AppAttestChain<ITBS, TBS, ATT, ASSERT>,
+    root_x: [u8; 48],
+    root_y: [u8; 48],
+    app_id: [u8; A],
+    app_id_hash: [u8; 32],
+    production: bool,
+    client_data_hash: [u8; 32],
+) -> ([u8; 32], [u8; 32], [u8; 32], u32) {
+    // A caller that branches (coinbase-attestation-v2's server kind passes
+    // zeros here) gets a named refusal instead of the first library assert
+    // the zeros happen to trip.
+    assert(chain.intermediate_tbs_len != 0, "No App Attest intermediate certificate");
+    let mut r: [u8; 48] = [0; 48];
+    let mut s: [u8; 48] = [0; 48];
+    for i in 0..48 {
+        r[i] = chain.intermediate_sig[i];
+        s[i] = chain.intermediate_sig[48 + i];
+    }
+    assert(
+        verify_intermediate_signature(
+            root_x,
+            root_y,
+            chain.intermediate_tbs,
+            chain.intermediate_tbs_len,
+            r,
+            s,
+        ),
+        "Intermediate is not signed by Apple's App Attestation root",
+    );
+    let ca = parse_intermediate_tbs(chain.intermediate_tbs, chain.intermediate_tbs_len);
+
+    app_attest_signing_key_under_ca(
+        CredentialChain {
+            credential_tbs: chain.credential_tbs,
+            credential_tbs_len: chain.credential_tbs_len,
+            credential_sig: chain.credential_sig,
+            att_auth_data: chain.att_auth_data,
+            att_auth_data_len: chain.att_auth_data_len,
+            att_client_data_hash: chain.att_client_data_hash,
+            assertion_auth_data: chain.assertion_auth_data,
+            assertion_auth_data_len: chain.assertion_auth_data_len,
+        },
+        ca.x,
+        ca.y,
+        app_id,
+        app_id_hash,
+        production,
+        client_data_hash,
+    )
 }

@@ -19,11 +19,14 @@
 //
 // TWO SIGNERS, ONE CIRCUIT, AND THE PROOF DOES NOT SAY WHICH
 //
-//   app     The phone. Apple App Attest: Apple's root -> App Attest
-//           intermediate -> credential certificate for our App ID -> an
-//           assertion over the statement. Only Apple's ROOT key is pinned
-//           (apple_root.nr); the intermediate is verified here, so Apple
-//           rotating it needs nothing from us.
+//   app     The phone. Apple App Attest: App Attest intermediate ->
+//           credential certificate for our App ID -> an assertion over the
+//           statement. The INTERMEDIATE's key ("Apple App Attestation CA 1",
+//           valid to 2030-03-13) is pinned (apple_ca.nr), not Apple's root:
+//           verifying root -> intermediate here costs 669,935 gates and
+//           doubles the circuit to 2^21 (decided 2026-10-27,
+//           .claude/agents/circuits-dev.md). When Apple issues a new
+//           intermediate, this circuit needs a new release.
 //   server  The AI server, which proves for SDK/MCP callers and has no
 //           Secure Enclave. Its P-256 key (Cloud KMS) is pinned in
 //           server_key.nr and signs SHA256(statement) directly.
@@ -31,7 +34,8 @@
 // The signer kind is a PRIVATE byte. Both kinds end in the same P-256
 // signature check; they differ only in where the key and the digest come
 // from. A prover cannot pick their own key: the server key is a constant and
-// the app key must come out of a certificate chain ending at Apple's root.
+// the app key must come out of a credential certificate the pinned Apple
+// intermediate signed.
 //
 // The app-only checks sit inside `if kind == app { ... }`. Noir compiles that
 // into constraints that hold only when the condition is true (they cost the
@@ -57,7 +61,7 @@
 // circuitId) derives the tag from the id.
 
 mod client_data;
-mod apple_root;
+mod apple_ca;
 mod server_key;
 
 use keccak256::keccak256;
@@ -67,11 +71,11 @@ use coinbase_libs::nullifier::verify_wallet_nullifier;
 use coinbase_libs::signed_message::signed_digest;
 use coinbase_libs::ethereum::{COINBASE_ATTESTER_CONTRACT, derive_address_from_pubkey};
 use app_attest::{
-    AppAttestChain, ASSERT_AUTH_DATA_MAX_LEN, ATT_AUTH_DATA_MAX_LEN, CREDENTIAL_TBS_MAX_LEN,
-    INTERMEDIATE_TBS_MAX_LEN, app_attest_signing_key,
+    ASSERT_AUTH_DATA_MAX_LEN, ATT_AUTH_DATA_MAX_LEN, CREDENTIAL_TBS_MAX_LEN, CredentialChain,
+    app_attest_signing_key_under_ca,
 };
 use client_data::{CLIENT_DATA_LEN, check_client_data};
-use apple_root::APPLE_APP_ATTESTATION_ROOT_KEY;
+use apple_ca::APPLE_APP_ATTESTATION_CA_KEY;
 use server_key::SERVER_KEY;
 
 /// The private signer-kind byte. Any other value is refused.
@@ -79,7 +83,7 @@ global KIND_APP: u8 = 1;
 global KIND_SERVER: u8 = 2;
 
 /// Only production App Attest keys are accepted. Development (sandbox) keys
-/// chain to the same Apple root and differ only in the AAGUID, so this is
+/// chain to the same Apple intermediate and differ only in the AAGUID, so this is
 /// the check that keeps them out. Apple: builds distributed through
 /// TestFlight / the App Store use production regardless of the entitlement,
 /// and a development build can be pointed at production by setting
@@ -144,10 +148,8 @@ fn main(
     // or the server's signature (server).
     statement_sig: [u8; 64],
 
-    // App Attest chain. The server kind passes zeros for all of these.
-    intermediate_tbs: [u8; INTERMEDIATE_TBS_MAX_LEN],
-    intermediate_tbs_len: u32,
-    intermediate_sig: [u8; 96],
+    // App Attest chain below the pinned intermediate. The server kind passes
+    // zeros for all of these.
     credential_tbs: [u8; CREDENTIAL_TBS_MAX_LEN],
     credential_tbs_len: u32,
     credential_sig: [u8; 96],
@@ -241,17 +243,14 @@ fn main(
     // App: the credential key Apple's chain vouches for, over Apple's
     // assertion digest SHA256(SHA256(authenticatorData || SHA256(clientData))).
     if signer_kind == KIND_APP {
-        let mut root_x: [u8; 48] = [0; 48];
-        let mut root_y: [u8; 48] = [0; 48];
+        let mut ca_x: [u8; 48] = [0; 48];
+        let mut ca_y: [u8; 48] = [0; 48];
         for i in 0..48 {
-            root_x[i] = APPLE_APP_ATTESTATION_ROOT_KEY[i];
-            root_y[i] = APPLE_APP_ATTESTATION_ROOT_KEY[48 + i];
+            ca_x[i] = APPLE_APP_ATTESTATION_CA_KEY[i];
+            ca_y[i] = APPLE_APP_ATTESTATION_CA_KEY[48 + i];
         }
-        let (x, y, d, _counter) = app_attest_signing_key(
-            AppAttestChain {
-                intermediate_tbs,
-                intermediate_tbs_len,
-                intermediate_sig,
+        let (x, y, d, _counter) = app_attest_signing_key_under_ca(
+            CredentialChain {
                 credential_tbs,
                 credential_tbs_len,
                 credential_sig,
@@ -261,8 +260,8 @@ fn main(
                 assertion_auth_data,
                 assertion_auth_data_len,
             },
-            root_x,
-            root_y,
+            ca_x,
+            ca_y,
             APP_ID,
             APP_ID_HASH,
             APP_ATTEST_PRODUCTION,
