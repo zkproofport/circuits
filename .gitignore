@@ -49,3 +49,20 @@ mdl/kr-region/test-vectors/
 
 # Node dependencies for the helper scripts under scripts/ (see package.json).
 node_modules/
+
+# human_passport_score: its 2^21 reference string is 134,217,940 bytes, over
+# GitHub's 100 MiB file limit, so it is not committed; its digest is still in
+# target/SHA256SUMS. Hosting is undecided (human-passport-score/README.md).
+human-passport-score/target/human_passport_score.srs
+# nargo writes every source file's absolute path into the compiled json, so a
+# local build names the builder's home directory. Committed circuit json comes
+# from CI (build-circuits.yml), which does not build this prototype yet; the
+# json, its SRS stamp and the manifest covering json + srs stay local until it
+# does. vk, vk_hash and the Solidity verifier are path-free and committed.
+human-passport-score/target/human_passport_score.json
+human-passport-score/target/human_passport_score.srs.toolchain
+human-passport-score/target/SHA256SUMS
+# Executed only, never shipped: no artefacts to keep.
+human-passport-real-issuer-check/target/
+# Mutation copies, rebuilt on every run of scripts/human-passport/mutation-check.sh.
+human-passport-mutant/

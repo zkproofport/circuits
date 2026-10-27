@@ -1,0 +1,8 @@
+[package]
+name = "human_passport_real_issuer_check"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+human_passport_libs = { path = "../human-passport-libs" }
