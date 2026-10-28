@@ -19,6 +19,8 @@
 #   the first block of partial_data", "claim key is not inside the payload
 #   object", "claim value mismatch", "claim value has no opening quote",
 #   "claim value has no closing quote",
+#   "claim value contains a quote" (needs a dishonest hint; held by the
+#   Noir test claims::an_email_run_into_the_next_claim_is_refused instead),
 #   "claim value is not terminated", "number claim is empty", "boolean claim
 #   is neither true nor false".
 # Swapping the provider (a Google token with provider 1 and the reverse) is

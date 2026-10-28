@@ -84,7 +84,7 @@ dyadic size: 1536 and 2048 both land in 2^19.
 | | gates | dyadic |
 |---|---|---|
 | v1 (768) | 235,719 | 2^18 (`.srs` 16,777,428 bytes) |
-| v2 (2048) | 350,659 | 2^19 (`.srs` 33,554,644 bytes) |
+| v2 (2048) | 352,006 (350,659 before the quote check) | 2^19 (`.srs` 33,554,644 bytes) |
 
 Measured parts at the 1536 cap: signature + SHA 180,332; payload decode
 +31,698; seven claim lookups, the `aud` keccak and the issuer / nonce checks
@@ -104,6 +104,13 @@ Proof 9,920 bytes; verifier 2,461 lines; vk 1,888 bytes.
   bind; replay within the token's hour does not.
 - String values may not contain a backslash, so an escaped `aud`, `iss`,
   `email` or `nonce` is refused rather than unescaped.
+- String values may not contain a `"` either. A value's length is a prover
+  hint, and the closing-quote and `,`/`}` checks also hold at the end of any
+  later string claim; without this, `email` could be read as
+  `bob@attacker.com","name":"x@victim.com` and `victim.com` proved from a
+  token whose display name the holder chose (found 2026-10-28 by the compiler
+  warnings audit; `claims::an_email_run_into_the_next_claim_is_refused`).
+  v1 has no such check and is affected.
 - `email_verified` must be the JSON boolean `true`; the string `"true"` (which
   Google's docs example shows) is refused, as in v1.
 
@@ -112,6 +119,7 @@ Proof 9,920 bytes; verifier 2,461 lines; vk 1,888 bytes.
 ```
 scripts/build.sh oidc-domain-attestation            # build + scripts/post-build.sh
 oidc-domain-attestation/scripts/mutation-check.sh   # which code refuses each case
+(cd oidc-domain-attestation && nargo test)          # claims checks fed a dishonest value
 ```
 
 `post-build.sh` regenerates fixtures (`scripts/make-fixtures.ts`: a fresh
