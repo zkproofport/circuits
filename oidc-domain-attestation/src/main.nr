@@ -1,7 +1,12 @@
 mod claims;
+mod provider_key;
 
 use jwt::JWT;
 use keccak256::keccak256;
+use statement_signer::{
+    ASSERT_AUTH_DATA_MAX_LEN, ATT_AUTH_DATA_MAX_LEN, CREDENTIAL_TBS_MAX_LEN, SignerChain,
+    verify_statement,
+};
 
 // header tail (< 64 bytes, so the `.` stays in) + the whole base64url payload.
 // Sized in README.md "Token layout".
@@ -66,6 +71,24 @@ fn main(
     // RSA signature
     redc_params_limbs: [u128; 18],
     signature_limbs: [u128; 18],
+
+    // Who vouched that pubkey_modulus_limbs is the provider's published key
+    // (provider_key.nr): 1 = the phone (App Attest), 2 = the AI server (Cloud
+    // KMS). Private; the proof does not say which.
+    signer_kind: u8,
+    // P-256 r || s, s in low form: the App Attest assertion signature (app)
+    // or the server's signature (server), over the provider-key statement.
+    statement_sig: [u8; 64],
+    // App Attest chain below the pinned intermediate, exactly as in
+    // coinbase_attestation v2. The server kind passes zeros for all of these.
+    credential_tbs: [u8; CREDENTIAL_TBS_MAX_LEN],
+    credential_tbs_len: u32,
+    credential_sig: [u8; 96],
+    att_auth_data: [u8; ATT_AUTH_DATA_MAX_LEN],
+    att_auth_data_len: u32,
+    att_client_data_hash: [u8; 32],
+    assertion_auth_data: [u8; ASSERT_AUTH_DATA_MAX_LEN],
+    assertion_auth_data_len: u32,
 ) {
     // Validate provider
     assert(
@@ -90,6 +113,28 @@ fn main(
         signature_limbs,
     );
     jwt.verify();
+
+    // ========================================
+    // PART 1b: the key is the provider's published key
+    // ========================================
+    // A signer we trust (app or server, ../statement-signer) compared this
+    // modulus with the provider's live key list at `now` and signed the
+    // provider-key statement; the statement is built here from public inputs.
+    verify_statement(
+        provider_key::statement(provider, now, pubkey_modulus_limbs),
+        signer_kind,
+        statement_sig,
+        SignerChain {
+            credential_tbs,
+            credential_tbs_len,
+            credential_sig,
+            att_auth_data,
+            att_auth_data_len,
+            att_client_data_hash,
+            assertion_auth_data,
+            assertion_auth_data_len,
+        },
+    );
 
     let payload = claims::decode_payload(partial_data, base64_decode_offset);
 

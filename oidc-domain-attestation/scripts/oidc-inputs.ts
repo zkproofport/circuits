@@ -27,6 +27,19 @@
  *   - MAX_PARTIAL_DATA_LENGTH is 2048 (v1: 768).
  *   - Four new public inputs; nonce_mode 1 needs the nonce the token was
  *     requested with, decoded from its 64 hex characters.
+ *
+ * Provider-key statement (2026-10-28, fix list item 12). The public inputs
+ * do not change (still 214). Ten private inputs follow signature_limbs:
+ * signer_kind, statement_sig and the App Attest chain, the same names and
+ * sizes as coinbase_attestation v2. Before building, a signer the circuit
+ * trusts must have checked that the modulus is in the provider's live JWKS
+ * and signed providerKeyStatement(provider, now, n):
+ *   server (kind 2): Cloud KMS ECDSA P-256 over SHA256(statement), r || s
+ *                    with low s; every App Attest input zero (serverSigner).
+ *   app    (kind 1): an App Attest assertion with clientDataHash =
+ *                    SHA256(statement), r || s with low s, plus the credential
+ *                    certificate TBS/signature and both authenticator datas
+ *                    (appSigner).
  */
 
 import * as crypto from "node:crypto";
@@ -35,6 +48,17 @@ import { keccak256 as ethersKeccak256 } from "ethers";
 export const MAX_PARTIAL_DATA_LENGTH = 2048;
 export const MAX_DOMAIN_LENGTH = 64;
 export const PUBLIC_INPUT_COUNT = 214;
+
+// Provider-key statement (src/provider_key.nr) and the signer inputs
+// (../statement-signer, app-attest-libs).
+export const STATEMENT_LEN = 313;
+export const STATEMENT_MAGIC = "ZKProofport/PK/1";
+export const CIRCUIT_ID = "oidc_domain_attestation";
+export const SIGNER_KIND_APP = 1;
+export const SIGNER_KIND_SERVER = 2;
+export const CREDENTIAL_TBS_MAX_LEN = 1000;
+export const ATT_AUTH_DATA_MAX_LEN = 256;
+export const ASSERT_AUTH_DATA_MAX_LEN = 128;
 
 export const PROVIDER_GOOGLE = 0;
 export const PROVIDER_MICROSOFT = 1;
@@ -58,6 +82,30 @@ export interface CircuitInputs {
   base64_decode_offset: number;
   redc_params_limbs: bigint[];
   signature_limbs: bigint[];
+  signer_kind: number;
+  statement_sig: Uint8Array;
+  credential_tbs: Uint8Array;
+  credential_tbs_len: number;
+  credential_sig: Uint8Array;
+  att_auth_data: Uint8Array;
+  att_auth_data_len: number;
+  att_client_data_hash: Uint8Array;
+  assertion_auth_data: Uint8Array;
+  assertion_auth_data_len: number;
+}
+
+/** Who signed the provider-key statement, as the circuit takes it. */
+export interface SignerInputs {
+  signer_kind: number;
+  statement_sig: Uint8Array;
+  credential_tbs: Uint8Array;
+  credential_tbs_len: number;
+  credential_sig: Uint8Array;
+  att_auth_data: Uint8Array;
+  att_auth_data_len: number;
+  att_client_data_hash: Uint8Array;
+  assertion_auth_data: Uint8Array;
+  assertion_auth_data_len: number;
 }
 
 export interface BuildOptions {
@@ -69,6 +117,8 @@ export interface BuildOptions {
   nonceBinding?: Uint8Array;
   /** Unix seconds. */
   now: bigint;
+  /** serverSigner(...) or appSigner(...) over providerKeyStatement(provider, now, n). */
+  signer: SignerInputs;
 }
 
 export function keccak(data: Uint8Array): Uint8Array {
@@ -127,6 +177,87 @@ export function sha256Midstate(data: Uint8Array, blocks: number): Uint32Array {
     H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
   }
   return H;
+}
+
+const padTo = (b: Uint8Array, n: number, what: string): Uint8Array => {
+  if (b.length > n) throw new Error(`${what} is ${b.length} bytes; the circuit takes ${n}`);
+  const out = new Uint8Array(n);
+  out.set(b);
+  return out;
+};
+
+/** The JWKS `n` as exactly 256 big-endian bytes (an RSA-2048 modulus). */
+export function modulusBytes(modulusB64url: string): Uint8Array {
+  let n = Buffer.from(modulusB64url, "base64url");
+  while (n.length > 256 && n[0] === 0) n = n.subarray(1);
+  if (n.length !== 256 || (n[0] & 0x80) === 0) {
+    throw new Error(`the provider key is not a 2048-bit RSA modulus (${n.length} bytes)`);
+  }
+  return Uint8Array.from(n);
+}
+
+/**
+ * The 313 bytes a signer signs: "ZKProofport/PK/1" || keccak256(circuit id) ||
+ * provider || now (u64 big-endian) || n (256 bytes big-endian). The circuit
+ * builds the same bytes from its public inputs (src/provider_key.nr).
+ */
+export function providerKeyStatement(provider: number, now: bigint, modulusB64url: string): Uint8Array {
+  if (provider !== PROVIDER_GOOGLE && provider !== PROVIDER_MICROSOFT) throw new Error(`Unknown provider ${provider}`);
+  if (now < 0n || now >= 1n << 64n) throw new Error(`now ${now} is not a u64`);
+  const t = Buffer.alloc(8);
+  t.writeBigUInt64BE(now);
+  const s = Buffer.concat([
+    Buffer.from(STATEMENT_MAGIC, "ascii"),
+    keccak(utf8(CIRCUIT_ID)),
+    Buffer.from([provider]),
+    t,
+    modulusBytes(modulusB64url),
+  ]);
+  if (s.length !== STATEMENT_LEN) throw new Error(`statement is ${s.length} bytes`);
+  return Uint8Array.from(s);
+}
+
+/** The server kind: a KMS signature (r || s, low s) and zeros for App Attest. */
+export function serverSigner(statementSig: Uint8Array): SignerInputs {
+  if (statementSig.length !== 64) throw new Error("statement_sig must be r || s, 64 bytes");
+  return {
+    signer_kind: SIGNER_KIND_SERVER,
+    statement_sig: Uint8Array.from(statementSig),
+    credential_tbs: new Uint8Array(CREDENTIAL_TBS_MAX_LEN),
+    credential_tbs_len: 0,
+    credential_sig: new Uint8Array(96),
+    att_auth_data: new Uint8Array(ATT_AUTH_DATA_MAX_LEN),
+    att_auth_data_len: 0,
+    att_client_data_hash: new Uint8Array(32),
+    assertion_auth_data: new Uint8Array(ASSERT_AUTH_DATA_MAX_LEN),
+    assertion_auth_data_len: 0,
+  };
+}
+
+/** The app kind: an App Attest assertion over SHA256(statement) and its chain. */
+export function appSigner(a: {
+  assertionSig: Uint8Array;
+  credentialTbs: Uint8Array;
+  credentialSig: Uint8Array;
+  attAuthData: Uint8Array;
+  attClientDataHash: Uint8Array;
+  assertionAuthData: Uint8Array;
+}): SignerInputs {
+  if (a.assertionSig.length !== 64) throw new Error("assertion signature must be r || s, 64 bytes");
+  if (a.credentialSig.length !== 96) throw new Error("credential signature must be r || s, 96 bytes");
+  if (a.attClientDataHash.length !== 32) throw new Error("attestation clientDataHash must be 32 bytes");
+  return {
+    signer_kind: SIGNER_KIND_APP,
+    statement_sig: Uint8Array.from(a.assertionSig),
+    credential_tbs: padTo(a.credentialTbs, CREDENTIAL_TBS_MAX_LEN, "credential TBS"),
+    credential_tbs_len: a.credentialTbs.length,
+    credential_sig: Uint8Array.from(a.credentialSig),
+    att_auth_data: padTo(a.attAuthData, ATT_AUTH_DATA_MAX_LEN, "attestation authData"),
+    att_auth_data_len: a.attAuthData.length,
+    att_client_data_hash: Uint8Array.from(a.attClientDataHash),
+    assertion_auth_data: padTo(a.assertionAuthData, ASSERT_AUTH_DATA_MAX_LEN, "assertion authData"),
+    assertion_auth_data_len: a.assertionAuthData.length,
+  };
 }
 
 /**
@@ -196,6 +327,7 @@ export function buildInputs(jwt: string, modulusB64url: string, opts: BuildOptio
     base64_decode_offset: dot + 1 - cut,
     redc_params_limbs: toLimbs(redc),
     signature_limbs: toLimbs(sig),
+    ...opts.signer,
   };
 }
 
@@ -232,6 +364,16 @@ export function toProverToml(i: CircuitInputs): string {
     `base64_decode_offset = ${i.base64_decode_offset}`,
     `redc_params_limbs = ${decArr(i.redc_params_limbs)}`,
     `signature_limbs = ${decArr(i.signature_limbs)}`,
+    `signer_kind = ${i.signer_kind}`,
+    `statement_sig = ${hexArr(i.statement_sig)}`,
+    `credential_tbs = ${hexArr(i.credential_tbs)}`,
+    `credential_tbs_len = ${i.credential_tbs_len}`,
+    `credential_sig = ${hexArr(i.credential_sig)}`,
+    `att_auth_data = ${hexArr(i.att_auth_data)}`,
+    `att_auth_data_len = ${i.att_auth_data_len}`,
+    `att_client_data_hash = ${hexArr(i.att_client_data_hash)}`,
+    `assertion_auth_data = ${hexArr(i.assertion_auth_data)}`,
+    `assertion_auth_data_len = ${i.assertion_auth_data_len}`,
     ``,
     `[domain]`,
     `storage = ${hexArr(i.domain.storage)}`,

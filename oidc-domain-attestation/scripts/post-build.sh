@@ -1,12 +1,19 @@
 #!/bin/bash
-# oidc_domain_attestation -- acceptance run (v2: aud, iss, iat/exp, nonce).
+# oidc_domain_attestation -- acceptance run (v2: aud, iss, iat/exp, nonce;
+# the provider-key statement signed by the app or the server).
 #
 # Run by scripts/build.sh after the circuit compiles; also runnable alone:
 #   oidc-domain-attestation/scripts/post-build.sh
 #
-# Fixtures are regenerated on every run by scripts/make-fixtures.ts from an
-# RSA key made on the spot, so nothing secret or real is stored and nothing
-# goes stale. They land in test-vectors/ (gitignored).
+#   1. the statement-signer library's tests and this circuit's Noir tests;
+#   2. the synthetic-anchors copy (scripts/statement-signer/
+#      make-synthetic-anchors.sh): the circuit unchanged, the library's Apple
+#      intermediate and server key replaced by keys the generator holds;
+#   3. fixtures, regenerated on every run by scripts/make-fixtures.ts from an
+#      RSA key made on the spot, so nothing secret or real is stored and
+#      nothing goes stale (gitignored test-vectors/ of both directories);
+#   4. every case against the synthetic-anchors copy;
+#   5. the cases that must run against the real anchors, in this directory.
 #
 # Every refusal must name its reason: a fixture refused for some OTHER reason
 # would hide the guard it is meant to exercise being gone. Which code does the
@@ -18,10 +25,32 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CIRCUIT_DIR="$(dirname "$SCRIPT_DIR")"
+REAL_DIR="$(dirname "$SCRIPT_DIR")"
+CIRCUITS="$(dirname "$REAL_DIR")"
+CIRCUIT_DIR="$CIRCUITS/oidc-domain-attestation-synthetic-anchors"
 VECTORS="$CIRCUIT_DIR/test-vectors"
-CIRCUIT_NAME=$(grep -m1 '^name' "$CIRCUIT_DIR/Nargo.toml" | sed 's/.*= *"\(.*\)"/\1/')
+REAL_VECTORS="$REAL_DIR/test-vectors"
+CIRCUIT_NAME=$(grep -m1 '^name' "$REAL_DIR/Nargo.toml" | sed 's/.*= *"\(.*\)"/\1/')
 CIRCUIT_JSON="$CIRCUIT_DIR/target/${CIRCUIT_NAME}.json"
+
+LOG=$(mktemp)
+trap 'rm -f "$LOG"' EXIT
+for lib in statement-signer oidc-domain-attestation; do
+  if (cd "$CIRCUITS/$lib" && nargo test > "$LOG" 2>&1); then
+    echo "  $lib Noir tests: $(grep -E 'tests passed' "$LOG" | tail -1 | sed 's/^.*\] //')"
+  else
+    grep -E "FAIL|failed" "$LOG" | sed 's/^/  /'
+    echo "  FAILED   nargo test in $lib"
+    exit 1
+  fi
+done
+echo "  building the synthetic-anchors copy"
+if ! "$CIRCUITS/scripts/statement-signer/make-synthetic-anchors.sh" oidc-domain-attestation > "$LOG" 2>&1; then
+  echo "  FAILED   make-synthetic-anchors.sh"
+  sed -n '1,20p' "$LOG" | sed 's/^/           /'
+  exit 1
+fi
+grep -E "synthetic-anchors copy:" "$LOG" | sed 's/^/  /'
 
 cd "$SCRIPT_DIR"
 if [ ! -x node_modules/.bin/tsx ]; then
@@ -29,12 +58,12 @@ if [ ! -x node_modules/.bin/tsx ]; then
   env -u NODE_OPTIONS npm ci --silent > /dev/null 2>&1 || { echo "  FAILED   npm ci in $SCRIPT_DIR"; exit 1; }
 fi
 echo "  regenerating fixtures"
-if ! env -u NODE_OPTIONS node_modules/.bin/tsx make-fixtures.ts > "$CIRCUIT_DIR/make-fixtures.log" 2>&1; then
+if ! env -u NODE_OPTIONS node_modules/.bin/tsx make-fixtures.ts > "$LOG" 2>&1; then
   echo "  FAILED   make-fixtures.ts"
-  sed -n '1,20p' "$CIRCUIT_DIR/make-fixtures.log" | sed 's/^/           /'
+  sed -n '1,20p' "$LOG" | sed 's/^/           /'
   exit 1
 fi
-mv "$CIRCUIT_DIR/make-fixtures.log" "$VECTORS/make-fixtures.log"
+cp "$LOG" "$VECTORS/make-fixtures.log"
 
 cd "$CIRCUIT_DIR"
 PASSED=0
@@ -144,6 +173,66 @@ refuse decode_offset_plus_4           "base64_decode_offset is not the payload s
 refuse wrong_nullifier                "nullifier mismatch"
 # RSA: noir-jwt's signature assert carries no message.
 refuse other_key_signed               "Failed constraint"
+
+echo ""
+echo "Provider-key statement, accepted:"
+accept google_bound_server PROVE      # the server kind for the same token as google_bound
+accept server_ignores_chain_fields
+echo ""
+echo "Provider-key statement, refused:"
+refuse stmt_other_key_vouched_server  "Statement signature is invalid"
+refuse stmt_other_key_vouched_app     "Statement signature is invalid"
+refuse stmt_other_provider            "Statement signature is invalid"
+refuse stmt_other_time                "Statement signature is invalid"
+refuse stmt_wrong_magic               "Statement signature is invalid"
+refuse stmt_other_tag                 "Statement signature is invalid"
+refuse stmt_truncated                 "Statement signature is invalid"
+refuse stmt_coinbase_replay_server    "Statement signature is invalid"
+refuse stmt_coinbase_replay_app       "Statement signature is invalid"
+refuse server_other_key               "Statement signature is invalid"
+refuse server_high_s                  "Statement signature is invalid"
+refuse server_zero_signature          "Signature provided for ECDSA verification is zero"
+refuse server_garbage_signature       "Statement signature is invalid"
+refuse kind_zero                      "Unknown statement signer kind"
+refuse kind_unknown                   "Unknown statement signer kind"
+refuse kind_flipped_app_to_server     "Statement signature is invalid"
+refuse kind_flipped_server_to_app     "No App Attest certificate chain"
+refuse app_chain_with_server_signature "Statement signature is invalid"
+refuse cert_other_ca                  "Credential certificate is not signed by the App Attest intermediate"
+refuse cert_high_s                    "Signature s value is not in canonical form"
+refuse cert_other_app                 "Credential certificate is for another app"
+refuse attestation_not_certified      "Attestation authenticator data is not the one Apple certified"
+refuse env_development                "App Attest environment does not match"
+refuse assertion_other_key            "Statement signature is invalid"
+refuse assertion_wrong_rpid           "Assertion is not for this app"
+refuse assertion_counter_zero         "Assertion counter is zero"
+refuse assertion_high_s               "Statement signature is invalid"
+
+# The signer kind is private: the same token proved by the app and by the
+# server gives byte-identical public inputs.
+echo ""
+if [ -s "$VECTORS/proof_google_bound/public_inputs" ] && [ -s "$VECTORS/proof_google_bound_server/public_inputs" ] \
+   && cmp -s "$VECTORS/proof_google_bound/public_inputs" "$VECTORS/proof_google_bound_server/public_inputs"; then
+  echo "  ok       google_bound (app) and google_bound_server (server): identical public inputs"
+  PASSED=$((PASSED + 1))
+else
+  echo "  FAILED   the app and server proofs of one token have different (or missing) public inputs"
+  FAILED=$((FAILED + 1))
+fi
+
+# The real circuit, its anchors as committed.
+echo ""
+echo "Real circuit (statement-signer anchors as committed):"
+cd "$REAL_DIR"
+VECTORS="$REAL_VECTORS"
+refuse real_synthetic_ca              "Credential certificate is not signed by the App Attest intermediate"
+refuse real_apple_chain               "Credential certificate is for another app"
+if env -u NODE_OPTIONS node "$CIRCUITS/scripts/statement-signer/set-server-key.js" --show | grep -q "INSECURE TEST KEY"; then
+  accept real_server_testkey
+  echo "  NOTE     statement-signer pins the INSECURE test key; mainnet deploys are refused"
+else
+  refuse real_server_testkey          "Statement signature is invalid"
+fi
 
 echo ""
 echo "  $PASSED passed, $FAILED failed"
