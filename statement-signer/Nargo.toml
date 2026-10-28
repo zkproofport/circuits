@@ -1,0 +1,13 @@
+[package]
+name = "statement_signer"
+type = "lib"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+# Who may sign a statement a circuit relies on, and the one check that a
+# statement was signed by one of them. Shared by coinbase-attestation-v2 and
+# oidc-domain-attestation; the two trust anchors (Apple's App Attest
+# intermediate and the AI server's Cloud KMS key) are pinned here, once.
+[dependencies]
+app_attest = { path = "../app-attest-libs" }
+sha256 = { tag = "v0.3.0", git = "https://github.com/noir-lang/sha256" }

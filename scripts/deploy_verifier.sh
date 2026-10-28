@@ -240,6 +240,18 @@ case $COMMAND in
         DISPLAY_NAME="CoinbaseCountryAttestation"
         ;;
     oidc-domain-attestation)
+        # The provider-key statement is signed by the keys statement-signer
+        # pins (shared with coinbase-attestation-v2); a verifier built while
+        # it pins the INSECURE test server key accepts statements anyone can
+        # sign, so mainnets are refused until the real key is set.
+        case $NETWORK in
+            base|mainnet)
+                if ! node "$SCRIPT_DIR/statement-signer/set-server-key.js" --require-real; then
+                    echo -e "${RED}Error: statement-signer pins the test server key; not deploying to $NETWORK${NC}"
+                    exit 1
+                fi
+                ;;
+        esac
         SOL_FILE="oidc-domain-attestation/target/OidcDomainAttestation.sol"
         SCRIPT_FILE="script/DeployOidcDomainAttestation.s.sol"
         DISPLAY_NAME="OidcDomainAttestation"
@@ -255,17 +267,17 @@ case $COMMAND in
         DISPLAY_NAME="DojangPlayground"
         ;;
     coinbase-attestation-v2)
-        # Coinbase KYC v2. A verifier built while src/server_key.nr pins the
-        # INSECURE test server key accepts statements anyone can sign, so
-        # mainnets are refused until the real Cloud KMS key is set
-        # (scripts/coinbase-attestation-v2/set-server-key.js --kms ...).
+        # Coinbase KYC v2. A verifier built while statement-signer/src/server_key.nr
+        # pins the INSECURE test server key accepts statements anyone can sign,
+        # so mainnets are refused until the real Cloud KMS key is set
+        # (scripts/statement-signer/set-server-key.js --kms ...).
         # The prototype it replaced (coinbase-app-attest-poc) is on Base
         # Sepolia, deployments/84532/CoinbaseAppAttestPoc.json; its source is
         # circuits commit 33344e2.
         case $NETWORK in
             base|mainnet)
-                if ! node "$SCRIPT_DIR/coinbase-attestation-v2/set-server-key.js" --require-real; then
-                    echo -e "${RED}Error: coinbase-attestation-v2 pins the test server key; not deploying to $NETWORK${NC}"
+                if ! node "$SCRIPT_DIR/statement-signer/set-server-key.js" --require-real; then
+                    echo -e "${RED}Error: statement-signer pins the test server key; not deploying coinbase-attestation-v2 to $NETWORK${NC}"
                     exit 1
                 fi
                 ;;

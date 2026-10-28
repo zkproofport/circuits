@@ -34,7 +34,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { ethers } = require('../node_modules/ethers');
-const anchors = require('./anchors');
+const anchors = require('../statement-signer/anchors');
 
 const HERE = __dirname;
 const CIRCUITS = path.resolve(HERE, '../..');

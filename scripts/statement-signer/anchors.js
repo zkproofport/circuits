@@ -1,17 +1,18 @@
 /**
- * The two trust anchors of coinbase_attestation_v2, as the scripts see them.
+ * The two trust anchors of the statement signers, as the scripts see them.
  *
- * The circuit pins two public keys as constants:
- *   src/apple_ca.nr    Apple App Attestation CA 1, the intermediate (P-384),
- *                      valid to 2030-03-13 -- a new circuit when Apple
- *                      replaces it
- *   src/server_key.nr  the AI server's statement key (P-256), ONE line
+ * statement-signer (the Noir library coinbase_attestation_v2 and
+ * oidc_domain_attestation both use) pins two public keys as constants:
+ *   statement-signer/src/apple_ca.nr    Apple App Attestation CA 1, the
+ *                      intermediate (P-384), valid to 2030-03-13 -- new
+ *                      circuits when Apple replaces it
+ *   statement-signer/src/server_key.nr  the AI server's statement key
+ *                      (P-256, Cloud KMS), ONE line
  *
- * Until the AI server's Cloud KMS key exists, server_key.nr holds the TEST
- * KEY below. Its private key is derived from a public string, so ANYONE can
- * sign with it: a verifier deployed with it accepts forged server statements.
- * set-server-key.js swaps the real key in; deploy_verifier.sh refuses a
- * mainnet deploy while the test key is in place.
+ * The TEST KEY below has a private key derived from a public string, so
+ * ANYONE can sign with it: a verifier deployed with it accepts forged server
+ * statements. set-server-key.js swaps a key in; deploy_verifier.sh refuses a
+ * mainnet deploy of either circuit while the test key is in place.
  *
  * The SYNTHETIC CA stands in for Apple's intermediate in the acceptance run's
  * synthetic-anchors copy, because no fixture can carry an Apple-signed
@@ -21,9 +22,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const CIRCUIT_DIR = path.resolve(__dirname, '../../coinbase-attestation-v2');
-const SERVER_KEY_FILE = path.join(CIRCUIT_DIR, 'src/server_key.nr');
-const APPLE_CA_FILE = path.join(CIRCUIT_DIR, 'src/apple_ca.nr');
+const SIGNER_DIR = path.resolve(__dirname, '../../statement-signer');
+const SERVER_KEY_FILE = path.join(SIGNER_DIR, 'src/server_key.nr');
+const APPLE_CA_FILE = path.join(SIGNER_DIR, 'src/apple_ca.nr');
 
 const N_P256 = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
 const N_P384 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973');
@@ -114,7 +115,7 @@ const isTestServerKey = xy => {
 };
 
 module.exports = {
-  CIRCUIT_DIR, SERVER_KEY_FILE, APPLE_CA_FILE, N_P256, N_P384,
+  SIGNER_DIR, SERVER_KEY_FILE, APPLE_CA_FILE, N_P256, N_P384,
   keyFromSeed, testServerKey, syntheticCa, p256FromPem,
   readServerKey, writeServerKey, writeAppleCa, readAppleCa, isTestServerKey,
 };

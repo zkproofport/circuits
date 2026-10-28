@@ -81,7 +81,9 @@ jobs:
         run: |
           # Circuits with their own acceptance tests re-build themselves many
           # times; that belongs in a separate run, not in the artifact check.
-          for dir in coinbase-attestation coinbase-country-attestation \
+          # coinbase-attestation-v2 and oidc-domain-attestation share the
+          # statement-signer library, so both are rebuilt when it changes.
+          for dir in coinbase-attestation coinbase-attestation-v2 coinbase-country-attestation \
                      giwa-attestation dojang-playground oidc-domain-attestation \
                      zktls mdl/kr-age mdl/kr-ownership mdl/kr-region; do
             echo "::group::$dir"

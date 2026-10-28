@@ -1,21 +1,24 @@
-// The AI server's statement key, X || Y (P-256), pinned in the circuit.
+// The AI server's statement key, X || Y (P-256), pinned for every circuit
+// that uses this library (coinbase_attestation v2, oidc_domain_attestation).
 //
-// The server signs the same 225-byte clientData the app does (client_data.nr),
-// as ECDSA P-256 over SHA256(clientData): Cloud KMS asymmetricSign on an
-// EC_SIGN_P256_SHA256 key with digest.sha256 = SHA256(clientData). README.md,
-// "What the server signs", has the exact procedure.
+// The server signs the same statements the app does -- coinbase v2's 225-byte
+// clientData, OIDC's 313-byte provider-key statement -- as ECDSA P-256 over
+// SHA256(statement): Cloud KMS asymmetricSign on an EC_SIGN_P256_SHA256 key
+// with digest.sha256 = SHA256(statement). Each circuit's README, "What the
+// server signs", has the exact procedure. One key serves both statements; the
+// statements are told apart by their magic, circuit tag and length (lib.nr).
 //
 // Pinned since 2026-10-28: the Cloud KMS key version
 //   projects/masselabs-zkproofport/locations/us-central1/keyRings/proofport-ai/
 //     cryptoKeys/coinbase-kyc-v2-statement/cryptoKeyVersions/1
 // (HSM, EC_SIGN_P256_SHA256, SHA256(X || Y) = 0x072479af...0ffac0). One key
-// for staging and production: one circuit, one vk, one key -- a second key
-// would be a second circuit and verifier. Its private half never leaves the
+// for staging and production: the circuit pins it, so a second key would be
+// a second circuit and verifier. Changing it changes every circuit above. Its private half never leaves the
 // HSM; the AI server's service accounts may only ask KMS to sign.
 //
-// `node scripts/coinbase-attestation-v2/set-server-key.js --show` says which
+// `node scripts/statement-signer/set-server-key.js --show` says which
 // key the line below holds. `--test-key` puts back the INSECURE test key of
-// scripts/coinbase-attestation-v2/anchors.js (private key = SHA256 of a public
+// scripts/statement-signer/anchors.js (private key = SHA256 of a public
 // string; anyone can sign with it), which the synthetic-anchors copy always
 // uses; deploy_verifier.sh refuses mainnets while it is here
 // (set-server-key.js --require-real). The script rewrites the single line

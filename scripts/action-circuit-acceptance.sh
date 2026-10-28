@@ -213,6 +213,8 @@ case "$CIRCUIT_REL" in
     refuse "client_other_scope"              "test-vectors/client_other_scope"              "clientData does not bind this scope"
     refuse "timestamp_changed"               "test-vectors/timestamp_changed"               "clientData timestamp is not the public timestamp"
     refuse "stale_timestamp_resigned"        "test-vectors/stale_timestamp_resigned"        "clientData timestamp is not the public timestamp"
+    refuse "oidc_statement_replay"           "test-vectors/oidc_statement_replay"           "clientData is not a ZKProofport App Attest statement"
+    refuse "oidc_statement_magic_swapped"    "test-vectors/oidc_statement_magic_swapped"    "clientData is for another circuit"
     EXTRA_PROOFS="server_action"
     ;;
 esac

@@ -11,7 +11,7 @@
 #                        App ID -- the only check that real chain cannot meet.
 #   real_synthetic_ca    A chain under the synthetic CA: refused, not Apple's.
 #   real_server_action   A server-kind statement signed by the TEST key:
-#                        accepted while server_key.nr pins the test key,
+#                        accepted while statement-signer/src/server_key.nr pins the test key,
 #                        refused once the real key is in.
 #
 # Needs the circuit compiled (scripts/build.sh) and the fixtures
@@ -48,10 +48,10 @@ run() {
 }
 
 echo ""
-echo "Real circuit (Apple's CA 1 and server_key.nr as committed):"
+echo "Real circuit (statement-signer anchors as committed):"
 run real_apple_chain "Credential certificate is for another app"
 run real_synthetic_ca "Credential certificate is not signed by the App Attest intermediate"
-if node "$SCRIPT_DIR/set-server-key.js" --show | grep -q "INSECURE TEST KEY"; then
+if node "$SCRIPT_DIR/../statement-signer/set-server-key.js" --show | grep -q "INSECURE TEST KEY"; then
   run real_server_action accept
   echo "  NOTE     server_key.nr pins the INSECURE test key; mainnet deploys are refused"
 else

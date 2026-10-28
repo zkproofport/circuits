@@ -1,23 +1,25 @@
 #!/usr/bin/env node
 /**
- * Set the AI server's statement key that coinbase_attestation_v2 pins.
+ * Set the AI server's statement key that statement-signer pins for
+ * coinbase_attestation_v2 and oidc_domain_attestation.
  *
- *   node scripts/coinbase-attestation-v2/set-server-key.js --kms <key version>
+ *   node scripts/statement-signer/set-server-key.js --kms <key version>
  *       <key version> = projects/P/locations/L/keyRings/R/cryptoKeys/K/cryptoKeyVersions/V
  *       Runs `gcloud kms keys versions get-public-key` for it. The key's
  *       algorithm must be EC_SIGN_P256_SHA256.
- *   node scripts/coinbase-attestation-v2/set-server-key.js --pem <public key .pem>
- *   node scripts/coinbase-attestation-v2/set-server-key.js --test-key
+ *   node scripts/statement-signer/set-server-key.js --pem <public key .pem>
+ *   node scripts/statement-signer/set-server-key.js --test-key
  *       Puts the INSECURE test key back (see anchors.js).
- *   node scripts/coinbase-attestation-v2/set-server-key.js --show
+ *   node scripts/statement-signer/set-server-key.js --show
  *       Prints the pinned key and whether it is the test key.
- *   node scripts/coinbase-attestation-v2/set-server-key.js --require-real
+ *   node scripts/statement-signer/set-server-key.js --require-real
  *       Exits 1 while the test key is pinned (deploy_verifier.sh calls this).
  *
  * It rewrites exactly one line, `pub global SERVER_KEY: [u8; 64] = [...];`
- * in coinbase-attestation-v2/src/server_key.nr. Changing the key changes the
- * circuit, its vk and its verifier: rebuild (scripts/build.sh
- * coinbase-attestation-v2) and redeploy afterwards.
+ * in statement-signer/src/server_key.nr. Changing the key changes BOTH
+ * circuits, their vks and their verifiers: rebuild (scripts/build.sh
+ * coinbase-attestation-v2, scripts/build.sh oidc-domain-attestation) and
+ * redeploy both afterwards.
  */
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -79,7 +81,7 @@ function main() {
   if (!a.readServerKey().equals(xy)) throw new Error('server_key.nr does not hold the key just written');
   console.log(`wrote ${a.SERVER_KEY_FILE}`);
   show(xy);
-  console.log('Now rebuild: scripts/build.sh coinbase-attestation-v2 (the vk and verifier change).');
+  console.log('Now rebuild both circuits: scripts/build.sh coinbase-attestation-v2 and scripts/build.sh oidc-domain-attestation (their vks and verifiers change).');
 }
 
 try {

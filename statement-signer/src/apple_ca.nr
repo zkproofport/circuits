@@ -1,5 +1,5 @@
 // Apple's App Attest INTERMEDIATE CA public key, X || Y (P-384): the only
-// Apple key this circuit pins. Every credential certificate it accepts must
+// Apple key the circuits using this library pin. Every credential certificate it accepts must
 // be signed by this key (SHA-256 over the TBS, P-384).
 //
 //   subject   CN=Apple App Attestation CA 1, O=Apple Inc., ST=California
@@ -9,13 +9,13 @@
 //
 // WHY THE INTERMEDIATE AND NOT THE ROOT (decided 2026-10-27,
 // .claude/agents/circuits-dev.md "DECIDED 2026-10-27"): verifying root ->
-// intermediate in-circuit costs 669,935 gates and makes this a 2^21 circuit
+// intermediate in-circuit costs 669,935 gates and makes coinbase v2 a 2^21 circuit
 // (.srs 134 MB, over GitHub's file limit, about twice the phone's proving
 // cost). Pinned, it is 2^20.
 //
 // THE PRICE: when Apple issues a successor intermediate and attestations
-// start chaining to it, every App Attest proof fails until a new circuit
-// release pins the new key (new vk, verifier redeploy, app/SDK/AI release).
+// start chaining to it, every App Attest proof fails until new circuit
+// releases pin the new key (new vk, verifier redeploy, app/SDK/AI release).
 // Watch for it from 2029 at the latest.
 //
 // scripts/coinbase-attestation-v2/check-apple-vector.js downloads Apple's
@@ -23,9 +23,10 @@
 // (apple-vector.json), and fails unless these bytes are that certificate's
 // key. app-attest-libs tests verify the same root -> CA 1 link in-circuit.
 //
-// The acceptance run's synthetic-anchors copy replaces this file (and
-// server_key.nr) with keys whose private halves the fixture generator holds;
-// nothing else in the copy differs. See README.md, "Two circuits".
+// Each acceptance run's synthetic-anchors copy of this library
+// (scripts/statement-signer/make-synthetic-anchors.sh) replaces this file and
+// server_key.nr with keys whose private halves the fixture generators hold;
+// nothing else in the copy differs.
 
 pub global APPLE_APP_ATTESTATION_CA_KEY: [u8; 96] = [
     0xae, 0x5b, 0x37, 0xa0, 0x77, 0x4d, 0x79, 0xb2, 0x35, 0x8f, 0x40, 0xe7, 0xd1, 0xf2, 0x26, 0x26,

@@ -2,7 +2,7 @@
 /**
  * Re-check the real App Attest chain in apple-vector.json against Apple's
  * published root, and check the intermediate coinbase_attestation_v2 pins
- * (coinbase-attestation-v2/src/apple_ca.nr) IS the CA 1 key that root signed.
+ * (statement-signer/src/apple_ca.nr) IS the CA 1 key that root signed.
  *
  *   node scripts/coinbase-attestation-v2/check-apple-vector.js
  *
@@ -23,7 +23,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { readAppleCa, APPLE_CA_FILE } = require('./anchors');
+const { readAppleCa, APPLE_CA_FILE } = require('../statement-signer/anchors');
 
 const ROOT_URL = 'https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem';
 
