@@ -20,7 +20,7 @@
  */
 const crypto = require('crypto');
 const anchors = require('./anchors');
-const { chainInputs } = require('../android-key-attestation/chain');
+const { chainInputs, factoryChainInputs } = require('../android-key-attestation/chain');
 
 const { N_P256 } = anchors;
 const PACKAGE = 'com.masselabs.zkproofport';
@@ -244,4 +244,97 @@ function androidSign(statement, key) {
   return out;
 }
 
-module.exports = { PACKAGE, SIGNING_DIGEST, androidDevice, androidSign, ecKey, keyDescription };
+const SIG_SHA256_RSA = Buffer.from('300d06092a864886f70d01010b0500', 'hex');
+
+/**
+ * A FACTORY-provisioned device (devices launched with Android 12 or earlier):
+ * the synthetic RSA-4096 root (anchors.js) -> intermediate (P-384,
+ * sha256WithRSAEncryption) -> batch key (P-256, ecdsa-with-SHA256, not a CA,
+ * as Sony's real one) -> leaf with the key description. Options as
+ * androidDevice for the key description, plus:
+ *   rsaRoot         another RSA root ({ privateKey, modulusHex })
+ *   ikSigner, batchSigner, leafSigner   sign that certificate with another key
+ *   ikIsCa          false: the intermediate is not a CA
+ *   keyDescriptionInBatch  true: the batch certificate carries one
+ *   mutateLeafTbs   as androidDevice
+ */
+function factoryDevice(opts = {}) {
+  const o = {
+    level: 1, packages: [PACKAGE], digests: [SIGNING_DIGEST], lockedByte: 0xff, bootState: 0,
+    origin: 0, rootOfTrust: true, appIdIn: 'software', challenge: Buffer.alloc(32), ikIsCa: true,
+    keyDescriptionInBatch: false, ...opts,
+  };
+  if (o.kmLevel === undefined) o.kmLevel = o.level;
+  const root = o.rsaRoot || anchors.syntheticAndroidRsaRoot();
+  const ik = o.ikKey || ecKey('secp384r1');
+  const batch = o.batchKey || ecKey('prime256v1');
+  const leaf = o.leafKey || ecKey('prime256v1');
+  const rootName = seq(tlv(0x31, seq(oid('550405'), printable('f92009e853b6b045'))));
+  const ikName = seq(rdn(OID_O, 'Google LLC'), rdn(OID_CN, 'Synthetic factory intermediate'));
+  const batchName = seq(rdn(OID_O, 'Synthetic OEM'), rdn(OID_CN, 'Synthetic batch key'));
+  const t0 = 1600000000;
+  const ikTbs = tbs({
+    sigAlg: SIG_SHA256_RSA, issuer: rootName, validity: [t0, t0 + 20 * 365 * DAY], subject: ikName, key: ik,
+    extensions: [ski(ik), basicCa(o.ikIsCa), keyUsage(Buffer.from('03020204', 'hex'))], serial: 0x87f4514475ba0a2bn,
+  });
+  const ikCert = seq(ikTbs, SIG_SHA256_RSA, tlv(0x03, Buffer.from([0]), crypto.sign('sha256', ikTbs, (o.ikSigner || root).privateKey)));
+  const batchExt = [ski(batch), aki(ik), keyUsage(Buffer.from('03020780', 'hex'))];
+  if (o.keyDescriptionInBatch) {
+    batchExt.push(ext(OID_KEY_ATTESTATION, seq(int(3), enumerated(1), int(4), enumerated(1), octet(Buffer.alloc(0)), octet(Buffer.alloc(0)), seq(), seq())));
+  }
+  const batchCert = certify(tbs({
+    sigAlg: SIG_SHA256, issuer: ikName, validity: [t0, t0 + 10 * 365 * DAY], subject: batchName, key: batch,
+    extensions: batchExt, serial: 0x3e7fb6a1ee4bd568n,
+  }), SIG_SHA256, 'sha256', o.batchSigner || ik);
+  let leafTbs = tbs({
+    sigAlg: SIG_SHA256, issuer: batchName, validity: [0, 2461449600], subject: seq(rdn(OID_CN, 'Android Keystore Key')), key: leaf,
+    extensions: [keyUsage(Buffer.from('03020780', 'hex')), ext(OID_KEY_ATTESTATION, keyDescription(o))], serial: 1n,
+  });
+  if (o.mutateLeafTbs) leafTbs = o.mutateLeafTbs(Buffer.from(leafTbs));
+  const leafCert = certify(leafTbs, SIG_SHA256, 'sha256', o.leafSigner || batch);
+  const rootPub = anchors.syntheticAndroidRsaRoot();
+  const ders = [leafCert, batchCert, ikCert];
+  const inputs = factoryChainInputs(ders, (o.rsaRoot || rootPub).modulusHex);
+  return { root, ik, batch, leaf, ders, inputs };
+}
+
+/** SHA256(SHA256(statement) || r || s): the Play Integrity nonce statement-signer requires. */
+function playIntegrityNonce(statement, sig) {
+  const h = crypto.createHash('sha256').update(statement).digest();
+  return crypto.createHash('sha256').update(Buffer.concat([h, sig])).digest();
+}
+
+/**
+ * A Play Integrity verdict signed like Google's (ES256 JWS, header
+ * {"alg":"ES256"}), in the classic-request shape of
+ * developer.android.com/google/play/integrity/verdicts. `v` overrides any
+ * field; `raw` replaces the whole JSON text. Returns the circuit's
+ * IntegrityToken inputs (payload base64url zero-padded to 1368, signature low s).
+ */
+function playToken(nonce, key, v = {}) {
+  const nonceB64 = v.nonceText !== undefined ? v.nonceText : Buffer.from(nonce).toString('base64url');
+  const json = v.raw || JSON.stringify({
+    requestDetails: { requestPackageName: v.requestPackage || PACKAGE, timestampMillis: '1761555660000', nonce: nonceB64 },
+    appIntegrity: v.appIntegrity || {
+      appRecognitionVerdict: v.recognition || 'PLAY_RECOGNIZED', packageName: v.package || PACKAGE,
+      certificateSha256Digest: [SIGNING_DIGEST.toString('base64url')], versionCode: '10301',
+    },
+    deviceIntegrity: { deviceRecognitionVerdict: v.verdicts || ['MEETS_DEVICE_INTEGRITY'] },
+    accountDetails: { appLicensingVerdict: 'LICENSED' },
+    environmentDetails: { playProtectVerdict: 'NO_ISSUES' },
+  });
+  const payloadB64 = Buffer.from(json).toString('base64url');
+  const input = Buffer.from('eyJhbGciOiJFUzI1NiJ9.' + payloadB64);
+  let sig = crypto.sign('sha256', input, { key: key.privateKey, dsaEncoding: 'ieee-p1363' });
+  let s = BigInt('0x' + sig.subarray(32).toString('hex'));
+  if (s > N_P256 / 2n) s = N_P256 - s;
+  sig = Buffer.concat([sig.subarray(0, 32), Buffer.from(s.toString(16).padStart(64, '0'), 'hex')]);
+  const b = Buffer.from(payloadB64);
+  if (b.length > 1368) throw new Error(`verdict payload is ${b.length} base64 characters; the circuit takes 1368`);
+  return { payload_b64: Buffer.concat([b, Buffer.alloc(1368 - b.length)]), payload_b64_len: b.length, signature: sig, json };
+}
+
+module.exports = {
+  PACKAGE, SIGNING_DIGEST, androidDevice, factoryDevice, androidSign, ecKey, keyDescription,
+  playIntegrityNonce, playToken,
+};

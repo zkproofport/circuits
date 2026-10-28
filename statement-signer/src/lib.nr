@@ -56,19 +56,24 @@
 pub mod apple_ca;
 pub mod server_key;
 pub mod android_root;
+pub mod play_key;
 mod tests;
 
 pub use app_attest::{
     ASSERT_AUTH_DATA_MAX_LEN, ATT_AUTH_DATA_MAX_LEN, CREDENTIAL_TBS_MAX_LEN, CredentialChain,
 };
+use android_root::{GOOGLE_KEY_ATTESTATION_ROOT, GOOGLE_RSA_ROOT_HASH};
 use app_attest::app_attest_signing_key_under_ca;
 use apple_ca::APPLE_APP_ATTESTATION_CA_KEY;
+use play_key::PLAY_INTEGRITY_KEY_HASH;
 use server_key::SERVER_KEY;
-use android_root::GOOGLE_KEY_ATTESTATION_ROOT;
 pub use android_key_attestation::{
-    AndroidChain, ATT_TBS_MAX_LEN, CA2_TBS_MAX_LEN, CA3_TBS_MAX_LEN, LEAF_TBS_MAX_LEN,
+    AndroidChain, ATT_TBS_MAX_LEN, BATCH_TBS_MAX_LEN, CA2_TBS_MAX_LEN, CA3_TBS_MAX_LEN,
+    FactoryChain, IK_TBS_MAX_LEN, LEAF_TBS_MAX_LEN, RSA4096_LIMBS,
 };
-use android_key_attestation::android_signing_key;
+use android_key_attestation::{android_factory_signing_key, android_signing_key};
+pub use play_integrity::{IntegrityToken, PAYLOAD_B64_MAX_LEN};
+use play_integrity::verify_integrity_token;
 
 /// The private signer-kind byte. Any other value is refused.
 pub global KIND_APP: u8 = 1;
@@ -203,7 +208,108 @@ pub fn verify_statement_android<let N: u32>(
         now,
     );
     assert(
-        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, sha256::digest(statement)),
+        std::ecdsa_secp256r1::verify_signature(
+            key_x,
+            key_y,
+            statement_sig,
+            sha256::digest(statement),
+        ),
         "Statement signature is invalid",
     );
+}
+
+/// The Play Integrity nonce for a statement, as zkPassport builds it
+/// (AppAttestModule.kt getNonceData): SHA256(SHA256(statement) || r || s),
+/// with the key's signature in the low-s form the circuit takes. The app
+/// requests the verdict only after signing, so the verdict is for this
+/// statement and this signature.
+pub fn play_integrity_nonce<let N: u32>(statement: [u8; N], statement_sig: [u8; 64]) -> [u8; 32] {
+    let h = sha256::digest(statement);
+    let mut pre: [u8; 96] = [0; 96];
+    for i in 0..32 {
+        pre[i] = h[i];
+    }
+    for i in 0..64 {
+        pre[32 + i] = statement_sig[i];
+    }
+    sha256::digest(pre)
+}
+
+/// The Android signer on a FACTORY-provisioned device (launched with Android
+/// 12 or earlier): Google's RSA root -> intermediate -> batch -> leaf
+/// (android_factory_signing_key), the leaf key's SHA256withECDSA signature
+/// over SHA256(statement), and -- because a factory key may have leaked and a
+/// circuit cannot read Google's revocation list -- a Play Integrity verdict
+/// (../play-integrity) signed with our app's pinned verification key
+/// (play_key.nr): PLAY_RECOGNIZED, device integrity, our package, nonce =
+/// play_integrity_nonce(statement, statement_sig). zkPassport's Android
+/// FaceMatch circuit pairs the same two proofs. Remote Key Provisioning
+/// devices use verify_statement_android, with no verdict and no server.
+pub fn verify_statement_android_factory<let N: u32>(
+    statement: [u8; N],
+    statement_sig: [u8; 64],
+    chain: FactoryChain,
+    token: IntegrityToken,
+    root_modulus: [u128; RSA4096_LIMBS],
+    root_redc: [u128; RSA4096_LIMBS],
+    play_key: [u8; 64],
+) {
+    // The modulus and Barrett parameter are prover inputs pinned by a hash,
+    // not circuit constants: with them as constants Barretenberg's circuit
+    // builder fails on noir-bignum's constant arithmetic (bb gates/write_vk:
+    // "remainder_1024.lo == 0", 2026-10-28), and comparing limb by limb lets
+    // the compiler fold them back into constants.
+    assert(rsa_root_hash(root_modulus, root_redc) == GOOGLE_RSA_ROOT_HASH, "RSA root is not Google's");
+    let (key_x, key_y) = android_factory_signing_key(
+        chain,
+        root_modulus,
+        root_redc,
+        ANDROID_PACKAGE,
+        ANDROID_SIGNING_DIGEST,
+    );
+    let statement_digest = sha256::digest(statement);
+    assert(
+        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, statement_digest),
+        "Statement signature is invalid",
+    );
+    // A prover input pinned by its hash, like the RSA root: Barretenberg's
+    // builder fails on an ECDSA check whose public key is a circuit constant
+    // (measured 2026-10-28, same "remainder_1024" assertion).
+    assert(play_key_hash(play_key) == PLAY_INTEGRITY_KEY_HASH, "Play Integrity key is not our app's");
+    let mut play_x: [u8; 32] = [0; 32];
+    let mut play_y: [u8; 32] = [0; 32];
+    for i in 0..32 {
+        play_x[i] = play_key[i];
+        play_y[i] = play_key[32 + i];
+    }
+    verify_integrity_token(
+        token,
+        play_x,
+        play_y,
+        ANDROID_PACKAGE,
+        play_integrity_nonce(statement, statement_sig),
+    );
+}
+
+/// Poseidon2 over the 70 limbs (modulus, then Barrett parameter).
+pub fn rsa_root_hash(modulus: [u128; RSA4096_LIMBS], redc: [u128; RSA4096_LIMBS]) -> Field {
+    let mut fields: [Field; 2 * RSA4096_LIMBS] = [0; 2 * RSA4096_LIMBS];
+    for i in 0..RSA4096_LIMBS {
+        fields[i] = modulus[i] as Field;
+        fields[RSA4096_LIMBS + i] = redc[i] as Field;
+    }
+    poseidon::poseidon2::Poseidon2::hash(fields, 2 * RSA4096_LIMBS)
+}
+
+/// Poseidon2 over the key's four 16-byte big-endian chunks.
+pub fn play_key_hash(key: [u8; 64]) -> Field {
+    let mut fields: [Field; 4] = [0; 4];
+    for c in 0..4 {
+        let mut v: Field = 0;
+        for i in 0..16 {
+            v = v * 256 + key[16 * c + i] as Field;
+        }
+        fields[c] = v;
+    }
+    poseidon::poseidon2::Poseidon2::hash(fields, 4)
 }

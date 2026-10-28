@@ -1,0 +1,10 @@
+[package]
+name = "coinbase_attestation_v2_android_factory"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+coinbase_libs = { path = "../coinbase-libs" }
+coinbase_v2_libs = { path = "../coinbase-v2-libs" }
+statement_signer = { path = "../statement-signer" }

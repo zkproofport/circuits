@@ -14,7 +14,10 @@
 #                                         the SYNTHETIC CA, src/server_key.nr
 #                                         -> the INSECURE test key and
 #                                         src/android_root.nr -> the SYNTHETIC
-#                                         Android root (anchors.js); nothing
+#                                         Android roots (P-384 and RSA) and
+#                                         src/play_key.nr -> the INSECURE test
+#                                         Play key (anchors.js), with their
+#                                         pinned hashes recomputed; nothing
 #                                         else may differ
 #   <circuit-dir>-synthetic-anchors/      the circuit, identical except its
 #                                         Nargo.toml names the library copy
@@ -52,10 +55,25 @@ env -u NODE_OPTIONS node -e '
   a.writeServerKey(Buffer.concat([s.x, s.y]), lib + "/src/server_key.nr");
   const r = a.syntheticAndroidRoot();
   a.writeAndroidRoot(Buffer.concat([r.x, r.y]), lib + "/src/android_root.nr");
+  const chain = require(require("path").join(require("path").dirname(process.argv[1]), "../android-key-attestation/chain.js"));
+  a.writeAndroidRsaRoot(chain.rsa4096Params(a.syntheticAndroidRsaRoot().modulusHex), lib + "/src/android_root.nr");
+  const p = a.testPlayKey();
+  a.writePlayKey(Buffer.concat([p.x, p.y]), lib + "/src/play_key.nr");
 ' "$ANCHORS" "$SYN_LIB"
+# The factory signer pins the RSA root and the Play key by Poseidon2 hash
+# (statement-signer lib.nr). Noir computes those hashes for the replaced
+# constants, and they are written back into the copy.
+HASHES=$(cd "$SYN_LIB" && nargo test print_anchor_hashes --show-output 2>/dev/null | grep -E '^0x[0-9a-f]+$')
+[ "$(printf '%s\n' "$HASHES" | wc -l | tr -d ' ')" = 2 ] || { echo "could not compute the synthetic anchor hashes" >&2; exit 1; }
+env -u NODE_OPTIONS node -e '
+  const a = require(process.argv[1]);
+  const [lib, rsa, play] = process.argv.slice(2);
+  a.writeFieldConstant("GOOGLE_RSA_ROOT_HASH", rsa, lib + "/src/android_root.nr");
+  a.writeFieldConstant("PLAY_INTEGRITY_KEY_HASH", play, lib + "/src/play_key.nr");
+' "$ANCHORS" "$SYN_LIB" $HASHES
 DIFFS=$(diff -rq "$LIB/src" "$SYN_LIB/src" | sed 's#.*/src/\([^ ]*\) and.*#\1#' | sort | tr '\n' ' ' || true)
 case "$DIFFS" in
-  "android_root.nr apple_ca.nr "|"android_root.nr apple_ca.nr server_key.nr ") ;;
+  "android_root.nr apple_ca.nr play_key.nr "|"android_root.nr apple_ca.nr play_key.nr server_key.nr ") ;;
   *) echo "synthetic-anchors library differs from statement-signer in: $DIFFS" >&2; exit 1 ;;
 esac
 diff -q "$LIB/Nargo.toml" "$SYN_LIB/Nargo.toml" > /dev/null

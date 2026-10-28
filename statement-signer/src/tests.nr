@@ -85,3 +85,35 @@ fn empty_android_chain() -> crate::AndroidChain {
 fn android_with_no_chain_is_refused() {
     crate::verify_statement_android([1, 2, 3], garbage_sig(), empty_android_chain(), 1772323200);
 }
+
+// The pinned hash is the hash of the pinned limbs (Google's RSA root).
+#[test]
+fn the_rsa_root_hash_is_the_pinned_limbs() {
+    let h = crate::rsa_root_hash(
+        crate::android_root::GOOGLE_RSA_ROOT_MODULUS_LIMBS,
+        crate::android_root::GOOGLE_RSA_ROOT_REDC_LIMBS,
+    );
+    assert(h == crate::android_root::GOOGLE_RSA_ROOT_HASH);
+}
+
+#[test]
+fn the_play_key_hash_is_the_pinned_key() {
+    assert(
+        crate::play_key_hash(crate::play_key::PLAY_INTEGRITY_KEY) == crate::play_key::PLAY_INTEGRITY_KEY_HASH,
+    );
+}
+
+// Prints the two anchor hashes of THIS copy of the library, one per line:
+// scripts/statement-signer/make-synthetic-anchors.sh runs it in the
+// synthetic-anchors copy after replacing the RSA root and the Play key, and
+// writes the printed hashes back. Asserts nothing.
+#[test]
+fn print_anchor_hashes() {
+    println(
+        crate::rsa_root_hash(
+            crate::android_root::GOOGLE_RSA_ROOT_MODULUS_LIMBS,
+            crate::android_root::GOOGLE_RSA_ROOT_REDC_LIMBS,
+        ),
+    );
+    println(crate::play_key_hash(crate::play_key::PLAY_INTEGRITY_KEY));
+}

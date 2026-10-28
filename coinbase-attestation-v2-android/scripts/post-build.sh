@@ -25,7 +25,7 @@ for lib in android-key-attestation statement-signer; do
 done
 echo ""
 echo "Synthetic-anchors copy and fixtures:"
-"$SCRIPTS/coinbase-attestation-v2-android/make-fixtures.sh" > "$LOG" 2>&1 || { tail -20 "$LOG" >&2; exit 1; }
+"$SCRIPTS/coinbase-attestation-v2-android/make-fixtures.sh" rkp > "$LOG" 2>&1 || { tail -20 "$LOG" >&2; exit 1; }
 grep -E "synthetic-anchors copy:" "$LOG" | sed 's/^/  /'
 "$SCRIPTS/action-circuit-acceptance.sh" coinbase-attestation-v2-android-synthetic-anchors
 

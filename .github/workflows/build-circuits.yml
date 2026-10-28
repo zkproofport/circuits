@@ -88,6 +88,7 @@ jobs:
           for dir in coinbase-attestation coinbase-attestation-v2 coinbase-country-attestation \
                      giwa-attestation dojang-playground oidc-domain-attestation \
                      oidc-domain-attestation-android coinbase-attestation-v2-android \
+                     oidc-domain-attestation-android-factory coinbase-attestation-v2-android-factory \
                      zktls mdl/kr-age mdl/kr-ownership mdl/kr-region; do
             echo "::group::$dir"
             SKIP_POST_BUILD=1 ./scripts/build.sh "$dir"

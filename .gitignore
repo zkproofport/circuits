@@ -71,6 +71,13 @@ coinbase-attestation-v2-android-synthetic-anchors/
 coinbase-attestation-v2-android-mutant/
 android-key-attestation-mutant/
 oidc-libs-mutant/
+oidc-domain-attestation-android-factory-synthetic-anchors/
+oidc-domain-attestation-android-factory-mutant/
+coinbase-attestation-v2-android-factory-synthetic-anchors/
+coinbase-attestation-v2-android-factory-mutant/
+play-integrity-mutant/
+# The synthetic RSA root the acceptance runs make on first use (anchors.js).
+scripts/statement-signer/.synthetic-android-rsa-root.key.pem
 coinbase-v2-libs-mutant/
 
 # 2^21 reference strings are over GitHub's 100 MiB file limit: build.sh
@@ -79,3 +86,5 @@ coinbase-v2-libs-mutant/
 # split one that is not.
 oidc-domain-attestation-android/target/*.srs
 coinbase-attestation-v2-android/target/*.srs
+oidc-domain-attestation-android-factory/target/*.srs
+coinbase-attestation-v2-android-factory/target/*.srs

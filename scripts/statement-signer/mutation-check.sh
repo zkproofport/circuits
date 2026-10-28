@@ -39,14 +39,15 @@ MUTANT="$CIRCUITS/$NAME-mutant"
 MUTANT_SIGNER="$CIRCUITS/statement-signer-mutant"
 MUTANT_LIB="$CIRCUITS/app-attest-libs-mutant"
 MUTANT_ANDROID="$CIRCUITS/android-key-attestation-mutant"
+MUTANT_PLAY="$CIRCUITS/play-integrity-mutant"
 
 [ -d "$SYN/test-vectors" ] && [ -d "$SYN_SIGNER/src" ] \
   || { echo "$NAME-synthetic-anchors or its fixtures are missing: run the circuit's fixture script" >&2; exit 1; }
 [ -f "$CASES_FILE" ] || { echo "$CASES_FILE missing" >&2; exit 1; }
-for d in "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID"; do
+for d in "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID" "$MUTANT_PLAY"; do
   [ ! -e "$d" ] || { echo "$d exists; remove it (a previous run was interrupted)" >&2; exit 1; }
 done
-trap 'rm -rf "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID" "$CIRCUITS/oidc-libs-mutant" "$CIRCUITS/coinbase-v2-libs-mutant"' EXIT
+trap 'rm -rf "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID" "$MUTANT_PLAY" "$CIRCUITS/oidc-libs-mutant" "$CIRCUITS/coinbase-v2-libs-mutant"' EXIT
 
 repoint() { # file from to
   sed -i.bak "s#\"$2\"#\"$3\"#" "$1" && rm -f "$1.bak"
@@ -64,8 +65,8 @@ while IFS= read -r c || [ -n "$c" ]; do
   if [ -n "$ONLY" ] && ! echo "$vector" | grep -Eq "$ONLY"; then continue; fi
   [ -f "$SYN/test-vectors/$vector.toml" ] || { echo "  FAILED   fixture $vector.toml missing"; FAILED=$((FAILED + 1)); continue; }
 
-  rm -rf "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID"
-  mkdir -p "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID"
+  rm -rf "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID" "$MUTANT_PLAY"
+  mkdir -p "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID" "$MUTANT_PLAY"
   cp -R "$SYN/Nargo.toml" "$SYN/src" "$SYN/test-vectors" "$MUTANT/"
   cp -R "$SYN_SIGNER/Nargo.toml" "$SYN_SIGNER/src" "$MUTANT_SIGNER/"
   cp -R "$CIRCUITS/app-attest-libs/Nargo.toml" "$CIRCUITS/app-attest-libs/src" "$MUTANT_LIB/"
@@ -74,7 +75,9 @@ while IFS= read -r c || [ -n "$c" ]; do
   repoint "$MUTANT_SIGNER/Nargo.toml" ../app-attest-libs ../app-attest-libs-mutant
   repoint "$MUTANT_SIGNER/Nargo.toml" ../android-key-attestation ../android-key-attestation-mutant
   repoint "$MUTANT_ANDROID/Nargo.toml" ../app-attest-libs ../app-attest-libs-mutant
-  SRCS=("$MUTANT/src" "$MUTANT_SIGNER/src" "$MUTANT_LIB/src" "$MUTANT_ANDROID/src")
+  cp -R "$CIRCUITS/play-integrity/Nargo.toml" "$CIRCUITS/play-integrity/src" "$MUTANT_PLAY/"
+  repoint "$MUTANT_SIGNER/Nargo.toml" ../play-integrity ../play-integrity-mutant
+  SRCS=("$MUTANT/src" "$MUTANT_SIGNER/src" "$MUTANT_LIB/src" "$MUTANT_ANDROID/src" "$MUTANT_PLAY/src")
   # The circuit's own shared library (the token / Coinbase checks moved out of
   # main.nr so each circuit id's packages share them): copied and repointed
   # too, so its asserts can be mutated like the rest.

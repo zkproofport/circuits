@@ -33,6 +33,14 @@ const TEST_SERVER_KEY_SEED = 'ZKProofport coinbase_attestation_v2 INSECURE test 
 const SYNTHETIC_CA_SEED = 'ZKProofport coinbase_attestation_v2 INSECURE synthetic App Attest intermediate';
 const SYNTHETIC_ANDROID_ROOT_SEED = 'ZKProofport statement-signer INSECURE synthetic Android key attestation root';
 const ANDROID_ROOT_FILE = path.join(SIGNER_DIR, 'src/android_root.nr');
+const PLAY_KEY_FILE = path.join(SIGNER_DIR, 'src/play_key.nr');
+const TEST_PLAY_KEY_SEED = 'ZKProofport statement-signer INSECURE test Play Integrity verification key';
+// The synthetic Google RSA root (factory chains): an RSA-4096 key made on this
+// machine the first time it is needed and kept beside this file, gitignored,
+// so the synthetic-anchors copy and the fixtures agree across runs. Node
+// cannot derive an RSA key from a seed the way keyFromSeed does for EC keys,
+// and a committed private key, test-only or not, is what secret scanners flag.
+const SYNTHETIC_RSA_ROOT_FILE = path.join(__dirname, '.synthetic-android-rsa-root.key.pem');
 
 /** A key pair whose private scalar is SHA256(seed) (mod n, never zero). */
 function keyFromSeed(seed, curve) {
@@ -132,13 +140,67 @@ function writeAndroidRoot(xy, file) {
   if (!readAndroidRoot(file).equals(xy)) throw new Error(`${file}: GOOGLE_KEY_ATTESTATION_ROOT was not replaced`);
 }
 
+/** The synthetic stand-in for Google's RSA-4096 factory root. */
+function syntheticAndroidRsaRoot() {
+  if (!fs.existsSync(SYNTHETIC_RSA_ROOT_FILE)) {
+    const { privateKey: made } = crypto.generateKeyPairSync('rsa', { modulusLength: 4096, publicExponent: 65537 });
+    fs.writeFileSync(SYNTHETIC_RSA_ROOT_FILE, made.export({ format: 'pem', type: 'pkcs8' }), { mode: 0o600 });
+  }
+  const privateKey = crypto.createPrivateKey(fs.readFileSync(SYNTHETIC_RSA_ROOT_FILE, 'utf8'));
+  const publicKey = crypto.createPublicKey(privateKey);
+  const n = Buffer.from(publicKey.export({ format: 'jwk' }).n, 'base64url');
+  if (n.length !== 512) throw new Error('the synthetic RSA root is not RSA-4096');
+  return { privateKey, publicKey, modulusHex: n.toString('hex') };
+}
+
+/** The INSECURE test Play Integrity verification key (P-256), from a public seed. */
+const testPlayKey = () => keyFromSeed(TEST_PLAY_KEY_SEED, 'P-256');
+
+const LIMB_LINE_RE = name => new RegExp(`pub global ${name}: \\[u128; 35\\] = \\[[^\\]]*\\];`);
+const limbLine = (name, limbs) => `pub global ${name}: [u128; 35] = [${limbs.map(x => '0x' + x.toString(16)).join(', ')}];`;
+
+/** Replace the RSA root limbs (synthetic copy only); the hash line is rewritten after it is computed. */
+function writeAndroidRsaRoot(params, file) {
+  let src = fs.readFileSync(file, 'utf8');
+  for (const [name, limbs] of [['GOOGLE_RSA_ROOT_MODULUS_LIMBS', params.modulus], ['GOOGLE_RSA_ROOT_REDC_LIMBS', params.redc]]) {
+    if (!LIMB_LINE_RE(name).test(src)) throw new Error(`${file} has no ${name} line`);
+    src = src.replace(LIMB_LINE_RE(name), limbLine(name, limbs));
+  }
+  fs.writeFileSync(file, src);
+}
+
+const PLAY_KEY_LINE_RE = /pub global PLAY_INTEGRITY_KEY: \[u8; 64\] = \[([^\]]*)\];/;
+/** The Play Integrity verification key X || Y as pinned. */
+function readPlayKey(file = PLAY_KEY_FILE) {
+  const m = fs.readFileSync(file, 'utf8').match(PLAY_KEY_LINE_RE);
+  if (!m) throw new Error(`${file} has no PLAY_INTEGRITY_KEY constant`);
+  const bytes = m[1].split(',').map(v => v.trim()).filter(Boolean).map(v => parseInt(v, 16));
+  if (bytes.length !== 64) throw new Error(`${file}: the Play key is ${bytes.length} bytes, not 64`);
+  return Buffer.from(bytes);
+}
+function writePlayKey(xy, file) {
+  const src = fs.readFileSync(file, 'utf8');
+  if (!PLAY_KEY_LINE_RE.test(src)) throw new Error(`${file} has no PLAY_INTEGRITY_KEY constant`);
+  fs.writeFileSync(file, src.replace(PLAY_KEY_LINE_RE, `pub global PLAY_INTEGRITY_KEY: [u8; 64] = ${noirBytes(xy)};`));
+  if (!readPlayKey(file).equals(xy)) throw new Error(`${file}: PLAY_INTEGRITY_KEY was not replaced`);
+}
+
+/** Replace a `pub global <name>: Field = 0x...;` line. */
+function writeFieldConstant(name, hex, file) {
+  const re = new RegExp(`pub global ${name}: Field = 0x[0-9a-f]+;`);
+  const src = fs.readFileSync(file, 'utf8');
+  if (!re.test(src)) throw new Error(`${file} has no ${name} line`);
+  fs.writeFileSync(file, src.replace(re, `pub global ${name}: Field = ${hex};`));
+}
+
 const isTestServerKey = xy => {
   const t = testServerKey();
   return Buffer.concat([t.x, t.y]).equals(xy);
 };
 
 module.exports = {
-  SIGNER_DIR, SERVER_KEY_FILE, APPLE_CA_FILE, ANDROID_ROOT_FILE, N_P256, N_P384,
+  SIGNER_DIR, SERVER_KEY_FILE, APPLE_CA_FILE, ANDROID_ROOT_FILE, PLAY_KEY_FILE, N_P256, N_P384,
+  syntheticAndroidRsaRoot, testPlayKey, writeAndroidRsaRoot, readPlayKey, writePlayKey, writeFieldConstant,
   keyFromSeed, testServerKey, syntheticCa, syntheticAndroidRoot, p256FromPem,
   readServerKey, writeServerKey, writeAppleCa, readAppleCa, writeAndroidRoot, readAndroidRoot,
   isTestServerKey,

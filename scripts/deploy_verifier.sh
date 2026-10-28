@@ -24,6 +24,8 @@ usage() {
     echo "  coinbase-attestation-v2        Deploy CoinbaseAttestationV2 (mainnets refused while the test server key is pinned)"
     echo "  oidc-domain-attestation-android  Deploy OidcDomainAttestationAndroid (OIDC, Android key attestation signer)"
     echo "  coinbase-attestation-v2-android  Deploy CoinbaseAttestationV2Android (Coinbase KYC v2, Android key attestation signer)"
+    echo "  oidc-domain-attestation-android-factory  Deploy OidcDomainAttestationAndroidFactory (OIDC, factory Android + Play Integrity)"
+    echo "  coinbase-attestation-v2-android-factory  Deploy CoinbaseAttestationV2AndroidFactory (Coinbase KYC v2, factory Android + Play Integrity)"
     echo "  mdl-kr-ownership               Deploy MdlKrOwnership (Korea Mobile ID — ownership)"
     echo "  mdl-kr-age                     Deploy MdlKrAge (Korea Mobile ID — age predicate)"
     echo "  mdl-kr-region                  Deploy MdlKrRegion (Korea Mobile ID — region predicate)"
@@ -258,7 +260,7 @@ case $COMMAND in
         SCRIPT_FILE="script/DeployOidcDomainAttestation.s.sol"
         DISPLAY_NAME="OidcDomainAttestation"
         ;;
-    oidc-domain-attestation-android|coinbase-attestation-v2-android)
+    oidc-domain-attestation-android|coinbase-attestation-v2-android|oidc-domain-attestation-android-factory|coinbase-attestation-v2-android-factory)
         # The Android packages of oidc_domain_attestation and
         # coinbase_attestation v2 (same circuit ids, Android key attestation
         # signer). They pin Google's Key Attestation CA1 and our Play signing
@@ -273,15 +275,15 @@ case $COMMAND in
                 fi
                 ;;
         esac
-        if [ "$COMMAND" = oidc-domain-attestation-android ]; then
-            SOL_FILE="oidc-domain-attestation-android/target/OidcDomainAttestationAndroid.sol"
-            SCRIPT_FILE="script/DeployOidcDomainAttestationAndroid.s.sol"
-            DISPLAY_NAME="OidcDomainAttestationAndroid"
-        else
-            SOL_FILE="coinbase-attestation-v2-android/target/CoinbaseAttestationV2Android.sol"
-            SCRIPT_FILE="script/DeployCoinbaseAttestationV2Android.s.sol"
-            DISPLAY_NAME="CoinbaseAttestationV2Android"
-        fi
+        case $COMMAND in
+            oidc-domain-attestation-android) DISPLAY_NAME="OidcDomainAttestationAndroid" ;;
+            coinbase-attestation-v2-android) DISPLAY_NAME="CoinbaseAttestationV2Android" ;;
+            oidc-domain-attestation-android-factory) DISPLAY_NAME="OidcDomainAttestationAndroidFactory" ;;
+            coinbase-attestation-v2-android-factory) DISPLAY_NAME="CoinbaseAttestationV2AndroidFactory" ;;
+            *) echo -e "${RED}Error: no Android package named '$COMMAND'${NC}"; exit 1 ;;
+        esac
+        SOL_FILE="$COMMAND/target/$DISPLAY_NAME.sol"
+        SCRIPT_FILE="script/Deploy$DISPLAY_NAME.s.sol"
         ;;
     giwa-attestation)
         SOL_FILE="giwa-attestation/target/GiwaAttestation.sol"

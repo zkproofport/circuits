@@ -153,6 +153,32 @@ export function androidSigner(statementSig: Uint8Array, chain: Omit<AndroidSigne
   };
 }
 
+/**
+ * The Android FACTORY signer (oidc-domain-attestation-android-factory): the
+ * statement signature, the factory chain (chain.js factoryChainInputs), the
+ * Play Integrity verdict (relay-decrypted JWS payload and Google's
+ * signature, low s), Google's RSA root limbs and our Play verification key
+ * (prover inputs the circuit pins by hash).
+ */
+export interface AndroidFactorySignerInputs {
+  statement_sig: Uint8Array;
+  ik_tbs: Uint8Array;
+  ik_tbs_len: number;
+  ik_sig: bigint[];
+  batch_tbs: Uint8Array;
+  batch_tbs_len: number;
+  batch_sig: Uint8Array;
+  leaf_tbs: Uint8Array;
+  leaf_tbs_len: number;
+  leaf_sig: Uint8Array;
+  integrity_payload_b64: Uint8Array;
+  integrity_payload_b64_len: number;
+  integrity_signature: Uint8Array;
+  rsa_root_modulus: bigint[];
+  rsa_root_redc: bigint[];
+  play_integrity_key: Uint8Array;
+}
+
 export interface BuildOptions {
   provider: Provider;
   /** The scope string; the circuit receives keccak256 of its UTF-8 bytes. */
@@ -464,6 +490,41 @@ export function toProverTomlAndroid(i: TokenInputs, a: AndroidSignerInputs): str
     `leaf_tbs = ${hexArr(a.leaf_tbs)}`,
     `leaf_tbs_len = ${a.leaf_tbs_len}`,
     `leaf_sig = ${hexArr(a.leaf_sig)}`,
+    ...tokenTomlTables(i),
+  ].join("\n");
+}
+
+/** Prover.toml for oidc-domain-attestation-android-factory. */
+export function toProverTomlAndroidFactory(i: TokenInputs, a: AndroidFactorySignerInputs): string {
+  const sizes: [keyof AndroidFactorySignerInputs, number][] = [
+    ["statement_sig", 64], ["ik_tbs", 512], ["batch_tbs", 512], ["batch_sig", 96], ["leaf_tbs", 1024], ["leaf_sig", 64],
+    ["integrity_payload_b64", 1368], ["integrity_signature", 64], ["play_integrity_key", 64],
+  ];
+  for (const [k, n] of sizes) {
+    const v = a[k] as Uint8Array;
+    if (!(v instanceof Uint8Array) || v.length !== n) throw new Error(`Android factory input ${k} must be ${n} bytes`);
+  }
+  for (const k of ["ik_sig", "rsa_root_modulus", "rsa_root_redc"] as const) {
+    if (a[k].length !== 35) throw new Error(`Android factory input ${k} must be 35 limbs`);
+  }
+  return [
+    ...tokenTomlHead(i),
+    `statement_sig = ${hexArr(a.statement_sig)}`,
+    `ik_tbs = ${hexArr(a.ik_tbs)}`,
+    `ik_tbs_len = ${a.ik_tbs_len}`,
+    `ik_sig = ${decArr(a.ik_sig)}`,
+    `batch_tbs = ${hexArr(a.batch_tbs)}`,
+    `batch_tbs_len = ${a.batch_tbs_len}`,
+    `batch_sig = ${hexArr(a.batch_sig)}`,
+    `leaf_tbs = ${hexArr(a.leaf_tbs)}`,
+    `leaf_tbs_len = ${a.leaf_tbs_len}`,
+    `leaf_sig = ${hexArr(a.leaf_sig)}`,
+    `integrity_payload_b64 = ${hexArr(a.integrity_payload_b64)}`,
+    `integrity_payload_b64_len = ${a.integrity_payload_b64_len}`,
+    `integrity_signature = ${hexArr(a.integrity_signature)}`,
+    `rsa_root_modulus = ${decArr(a.rsa_root_modulus)}`,
+    `rsa_root_redc = ${decArr(a.rsa_root_redc)}`,
+    `play_integrity_key = ${hexArr(a.play_integrity_key)}`,
     ...tokenTomlTables(i),
   ].join("\n");
 }

@@ -1,0 +1,9 @@
+[package]
+name = "oidc_domain_attestation_android_factory"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+oidc_libs = { path = "../oidc-libs" }
+statement_signer = { path = "../statement-signer" }
