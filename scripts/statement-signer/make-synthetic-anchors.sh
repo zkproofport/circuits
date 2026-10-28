@@ -3,7 +3,7 @@
 # against SYNTHETIC trust anchors, so fixtures can sign for both kinds.
 #
 #   scripts/statement-signer/make-synthetic-anchors.sh <circuit-dir>
-#   e.g. coinbase-attestation-v2, oidc-domain-attestation
+#   e.g. coinbase-attestation-v2, oidc-domain-attestation, and their -android packages
 #
 # No fixture can hold an Apple-signed credential certificate for our App ID
 # together with that device's key, nor the Cloud KMS key's private half. So
@@ -11,9 +11,11 @@
 # runs in a copy whose anchors the generators hold:
 #
 #   statement-signer-synthetic-anchors/   the library, with src/apple_ca.nr ->
-#                                         the SYNTHETIC CA and src/server_key.nr
-#                                         -> the INSECURE test key (anchors.js);
-#                                         nothing else may differ
+#                                         the SYNTHETIC CA, src/server_key.nr
+#                                         -> the INSECURE test key and
+#                                         src/android_root.nr -> the SYNTHETIC
+#                                         Android root (anchors.js); nothing
+#                                         else may differ
 #   <circuit-dir>-synthetic-anchors/      the circuit, identical except its
 #                                         Nargo.toml names the library copy
 #
@@ -48,10 +50,12 @@ env -u NODE_OPTIONS node -e '
   a.writeAppleCa(Buffer.concat([c.x, c.y]), lib + "/src/apple_ca.nr");
   const s = a.testServerKey();
   a.writeServerKey(Buffer.concat([s.x, s.y]), lib + "/src/server_key.nr");
+  const r = a.syntheticAndroidRoot();
+  a.writeAndroidRoot(Buffer.concat([r.x, r.y]), lib + "/src/android_root.nr");
 ' "$ANCHORS" "$SYN_LIB"
 DIFFS=$(diff -rq "$LIB/src" "$SYN_LIB/src" | sed 's#.*/src/\([^ ]*\) and.*#\1#' | sort | tr '\n' ' ' || true)
 case "$DIFFS" in
-  "apple_ca.nr "|"apple_ca.nr server_key.nr ") ;;
+  "android_root.nr apple_ca.nr "|"android_root.nr apple_ca.nr server_key.nr ") ;;
   *) echo "synthetic-anchors library differs from statement-signer in: $DIFFS" >&2; exit 1 ;;
 esac
 diff -q "$LIB/Nargo.toml" "$SYN_LIB/Nargo.toml" > /dev/null

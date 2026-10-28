@@ -51,7 +51,10 @@ CHECK=0
 # fallback is the exact weakness these manifests exist to close. Found
 # 2026-09-09, by noticing the trace ran the outer loop three times for two
 # patterns.
-DOWNLOADED_IN_TARGET=('*.json' '*.srs')
+# '*.srs.part*': a reference string over GitHub's file limit is published in
+# parts (build.sh); the joined '*.srs' is digested too, so the app can check
+# what it reassembled.
+DOWNLOADED_IN_TARGET=('*.json' '*.srs' '*.srs.part*')
 DOWNLOADED_IN_VK=('vk')
 
 sha256_of() {

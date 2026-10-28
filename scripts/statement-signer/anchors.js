@@ -31,6 +31,8 @@ const N_P384 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffc7634d8
 
 const TEST_SERVER_KEY_SEED = 'ZKProofport coinbase_attestation_v2 INSECURE test server key';
 const SYNTHETIC_CA_SEED = 'ZKProofport coinbase_attestation_v2 INSECURE synthetic App Attest intermediate';
+const SYNTHETIC_ANDROID_ROOT_SEED = 'ZKProofport statement-signer INSECURE synthetic Android key attestation root';
+const ANDROID_ROOT_FILE = path.join(SIGNER_DIR, 'src/android_root.nr');
 
 /** A key pair whose private scalar is SHA256(seed) (mod n, never zero). */
 function keyFromSeed(seed, curve) {
@@ -54,6 +56,8 @@ function keyFromSeed(seed, curve) {
 
 const testServerKey = () => keyFromSeed(TEST_SERVER_KEY_SEED, 'P-256');
 const syntheticCa = () => keyFromSeed(SYNTHETIC_CA_SEED, 'P-384');
+/** Stands in for Google's Key Attestation CA1 in the synthetic-anchors copy. */
+const syntheticAndroidRoot = () => keyFromSeed(SYNTHETIC_ANDROID_ROOT_SEED, 'P-384');
 
 /** X || Y of a P-256 public key in PEM (SPKI), refusing any other curve. */
 function p256FromPem(pem) {
@@ -109,13 +113,33 @@ function readAppleCa(file = APPLE_CA_FILE) {
   return Buffer.from(bytes);
 }
 
+const ANDROID_ROOT_LINE_RE = /pub global GOOGLE_KEY_ATTESTATION_ROOT: \[u8; 96\] = \[([^\]]*)\];/;
+
+/** Google's Key Attestation CA1 X || Y as the circuit pins it. */
+function readAndroidRoot(file = ANDROID_ROOT_FILE) {
+  const m = fs.readFileSync(file, 'utf8').match(ANDROID_ROOT_LINE_RE);
+  if (!m) throw new Error(`${file} has no GOOGLE_KEY_ATTESTATION_ROOT constant`);
+  const bytes = m[1].split(',').map(v => v.trim()).filter(Boolean).map(v => parseInt(v, 16));
+  if (bytes.length !== 96) throw new Error(`${file}: the Android root key is ${bytes.length} bytes, not 96`);
+  return Buffer.from(bytes);
+}
+
+/** Replace the Android root constant (used only for the synthetic copy). */
+function writeAndroidRoot(xy, file) {
+  const src = fs.readFileSync(file, 'utf8');
+  if (!ANDROID_ROOT_LINE_RE.test(src)) throw new Error(`${file} has no GOOGLE_KEY_ATTESTATION_ROOT constant`);
+  fs.writeFileSync(file, src.replace(ANDROID_ROOT_LINE_RE, `pub global GOOGLE_KEY_ATTESTATION_ROOT: [u8; 96] = ${noirBytes(xy)};`));
+  if (!readAndroidRoot(file).equals(xy)) throw new Error(`${file}: GOOGLE_KEY_ATTESTATION_ROOT was not replaced`);
+}
+
 const isTestServerKey = xy => {
   const t = testServerKey();
   return Buffer.concat([t.x, t.y]).equals(xy);
 };
 
 module.exports = {
-  SIGNER_DIR, SERVER_KEY_FILE, APPLE_CA_FILE, N_P256, N_P384,
-  keyFromSeed, testServerKey, syntheticCa, p256FromPem,
-  readServerKey, writeServerKey, writeAppleCa, readAppleCa, isTestServerKey,
+  SIGNER_DIR, SERVER_KEY_FILE, APPLE_CA_FILE, ANDROID_ROOT_FILE, N_P256, N_P384,
+  keyFromSeed, testServerKey, syntheticCa, syntheticAndroidRoot, p256FromPem,
+  readServerKey, writeServerKey, writeAppleCa, readAppleCa, writeAndroidRoot, readAndroidRoot,
+  isTestServerKey,
 };

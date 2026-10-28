@@ -57,3 +57,31 @@ fn server_kind_zero_signature_is_refused() {
 fn app_kind_without_a_chain_is_refused() {
     verify_statement([1, 2, 3], KIND_APP, garbage_sig(), empty_chain());
 }
+
+// ---- the Android signer ----------------------------------------------------
+// Accepting needs a Google-signed chain with its leaf's private key, so the
+// accepted cases run in the -android packages' acceptance runs (synthetic
+// root); android-key-attestation's tests run real Google chains.
+
+fn empty_android_chain() -> crate::AndroidChain {
+    crate::AndroidChain {
+        ca2_tbs: [0; crate::CA2_TBS_MAX_LEN],
+        ca2_tbs_len: 0,
+        ca2_sig: [0; 96],
+        ca3_tbs: [0; crate::CA3_TBS_MAX_LEN],
+        ca3_tbs_len: 0,
+        ca3_sig: [0; 96],
+        att_tbs: [0; crate::ATT_TBS_MAX_LEN],
+        att_tbs_len: 0,
+        att_sig: [0; 64],
+        leaf_tbs: [0; crate::LEAF_TBS_MAX_LEN],
+        leaf_tbs_len: 0,
+        leaf_sig: [0; 64],
+    }
+}
+
+// The server's zeros are not an Android chain.
+#[test(should_fail_with = "No Android key attestation chain")]
+fn android_with_no_chain_is_refused() {
+    crate::verify_statement_android([1, 2, 3], garbage_sig(), empty_android_chain(), 1772323200);
+}

@@ -46,6 +46,11 @@ mdl/kr-region/test-vectors/
 # Prover fixtures on every run. Any circuit, not a list that goes stale: arc
 # grew a test-vectors/ the day after giwa did and the list had not moved.
 **/test-vectors/
+# Except real Android key attestation chains (Apache-2.0, from
+# github.com/android/keyattestation testdata), which the library's tests and
+# scripts/android-key-attestation/export-vector.js read; they are inputs, not
+# derived fixtures.
+!android-key-attestation/test-vectors/
 
 # Node dependencies for the helper scripts under scripts/ (see package.json).
 node_modules/
@@ -60,3 +65,17 @@ oidc-domain-attestation-mutant/
 statement-signer-synthetic-anchors/
 statement-signer-mutant/
 app-attest-libs-mutant/
+oidc-domain-attestation-android-synthetic-anchors/
+oidc-domain-attestation-android-mutant/
+coinbase-attestation-v2-android-synthetic-anchors/
+coinbase-attestation-v2-android-mutant/
+android-key-attestation-mutant/
+oidc-libs-mutant/
+coinbase-v2-libs-mutant/
+
+# 2^21 reference strings are over GitHub's 100 MiB file limit: build.sh
+# publishes them as <name>.srs.part0, .part1, ... and keeps the joined file
+# local. Every circuit whose .srs is split is listed here; build.sh refuses to
+# split one that is not.
+oidc-domain-attestation-android/target/*.srs
+coinbase-attestation-v2-android/target/*.srs

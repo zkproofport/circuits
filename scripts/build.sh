@@ -264,6 +264,37 @@ if [ ! -f "./target/${CIRCUIT_NAME}.srs" ]; then
     exit 1
 fi
 echo "$SRS_STAMP_WANT" > "$SRS_STAMP"
+
+# A 2^21 reference string is 134,217,940 bytes, over GitHub's 100 MiB file
+# limit, so it cannot be committed (or fetched by the app) as one file. Such a
+# file is published as <name>.srs.part0, .part1, ... of at most 64 MiB each;
+# the joined file stays local (gitignored per circuit) and SHA256SUMS lists
+# both the parts and the joined file, so the app checks each part and then
+# what it reassembled. Smaller files are published whole, as before.
+SRS_FILE="./target/${CIRCUIT_NAME}.srs"
+rm -f "./target/${CIRCUIT_NAME}.srs.part"*
+if [ "$(wc -c < "$SRS_FILE")" -gt $((95 * 1024 * 1024)) ]; then
+    python3 -I - "$SRS_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+part = 64 * 1024 * 1024
+with open(path, 'rb') as f:
+    data = f.read()
+parts = [data[i:i + part] for i in range(0, len(data), part)]
+for i, chunk in enumerate(parts):
+    with open(f'{path}.part{i}', 'wb') as out:
+        out.write(chunk)
+joined = b''.join(open(f'{path}.part{i}', 'rb').read() for i in range(len(parts)))
+if joined != data:
+    sys.exit('the SRS parts do not join back into the SRS')
+print(f'SRS split into {len(parts)} parts of at most {part} bytes')
+PY
+    if ! git -C "$CIRCUIT_DIR" check-ignore -q "$SRS_FILE"; then
+        echo "Error: $SRS_FILE is over GitHub's file limit but not gitignored;" >&2
+        echo "  add it to .gitignore beside the other split reference strings." >&2
+        exit 1
+    fi
+fi
 echo "SRS ready: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
 echo ""
 

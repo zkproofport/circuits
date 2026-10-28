@@ -4,10 +4,13 @@ type = "lib"
 version = "0.1.0"
 authors = ["zkproofport"]
 
-# Who may sign a statement a circuit relies on, and the one check that a
-# statement was signed by one of them. Shared by coinbase-attestation-v2 and
-# oidc-domain-attestation; the two trust anchors (Apple's App Attest
-# intermediate and the AI server's Cloud KMS key) are pinned here, once.
+# Who may sign a statement a circuit relies on, and the check that a
+# statement was signed by one of them. Shared by coinbase-attestation-v2,
+# oidc-domain-attestation and their -android packages; the trust anchors
+# (Apple's App Attest intermediate, the AI server's Cloud KMS key, Google's
+# Key Attestation CA1 root with our package and Play signing certificate) are
+# pinned here, once.
 [dependencies]
 app_attest = { path = "../app-attest-libs" }
+android_key_attestation = { path = "../android-key-attestation" }
 sha256 = { tag = "v0.3.0", git = "https://github.com/noir-lang/sha256" }

@@ -108,6 +108,51 @@ export interface SignerInputs {
   assertion_auth_data_len: number;
 }
 
+/** Everything but the signer: what both circuit packages take alike. */
+export type TokenInputs = Omit<CircuitInputs, keyof SignerInputs>;
+
+/**
+ * The Android signer (oidc-domain-attestation-android): the statement's
+ * SHA256withECDSA signature by a key Android key attestation vouches for,
+ * and that chain (circuits scripts/android-key-attestation/chain.js
+ * chainInputs) in place of signer_kind and the App Attest fields.
+ */
+export interface AndroidSignerInputs {
+  statement_sig: Uint8Array;
+  ca2_tbs: Uint8Array;
+  ca2_tbs_len: number;
+  ca2_sig: Uint8Array;
+  ca3_tbs: Uint8Array;
+  ca3_tbs_len: number;
+  ca3_sig: Uint8Array;
+  att_tbs: Uint8Array;
+  att_tbs_len: number;
+  att_sig: Uint8Array;
+  leaf_tbs: Uint8Array;
+  leaf_tbs_len: number;
+  leaf_sig: Uint8Array;
+}
+
+/** The Android signer's inputs: `chain` is chain.js chainInputs(...)'s output. */
+export function androidSigner(statementSig: Uint8Array, chain: Omit<AndroidSignerInputs, "statement_sig">): AndroidSignerInputs {
+  if (statementSig.length !== 64) throw new Error("statement_sig must be r || s, 64 bytes");
+  const sizes: [keyof AndroidSignerInputs, number][] = [
+    ["ca2_tbs", 600], ["ca2_sig", 96], ["ca3_tbs", 768], ["ca3_sig", 96],
+    ["att_tbs", 512], ["att_sig", 64], ["leaf_tbs", 1024], ["leaf_sig", 64],
+  ];
+  for (const [k, n] of sizes) {
+    const v = chain[k as Exclude<keyof AndroidSignerInputs, "statement_sig">] as Uint8Array;
+    if (!(v instanceof Uint8Array) || v.length !== n) throw new Error(`Android chain ${k} must be ${n} bytes`);
+  }
+  return {
+    statement_sig: Uint8Array.from(statementSig),
+    ca2_tbs: Uint8Array.from(chain.ca2_tbs), ca2_tbs_len: chain.ca2_tbs_len, ca2_sig: Uint8Array.from(chain.ca2_sig),
+    ca3_tbs: Uint8Array.from(chain.ca3_tbs), ca3_tbs_len: chain.ca3_tbs_len, ca3_sig: Uint8Array.from(chain.ca3_sig),
+    att_tbs: Uint8Array.from(chain.att_tbs), att_tbs_len: chain.att_tbs_len, att_sig: Uint8Array.from(chain.att_sig),
+    leaf_tbs: Uint8Array.from(chain.leaf_tbs), leaf_tbs_len: chain.leaf_tbs_len, leaf_sig: Uint8Array.from(chain.leaf_sig),
+  };
+}
+
 export interface BuildOptions {
   provider: Provider;
   /** The scope string; the circuit receives keccak256 of its UTF-8 bytes. */
@@ -269,6 +314,11 @@ export function appSigner(a: {
  * able to hand it tokens a careful builder would reject.
  */
 export function buildInputs(jwt: string, modulusB64url: string, opts: BuildOptions): CircuitInputs {
+  return { ...buildTokenInputs(jwt, modulusB64url, opts), ...opts.signer };
+}
+
+/** buildInputs without the signer: the token's half of either package's inputs. */
+export function buildTokenInputs(jwt: string, modulusB64url: string, opts: Omit<BuildOptions, "signer">): TokenInputs {
   const parts = jwt.split(".");
   if (parts.length !== 3) throw new Error(`JWT has ${parts.length} parts, expected 3`);
   const [headerB64, payloadB64, sigB64] = parts;
@@ -327,12 +377,11 @@ export function buildInputs(jwt: string, modulusB64url: string, opts: BuildOptio
     base64_decode_offset: dot + 1 - cut,
     redc_params_limbs: toLimbs(redc),
     signature_limbs: toLimbs(sig),
-    ...opts.signer,
   };
 }
 
 /** The public inputs as the verifier sees them, in circuit order (214 values). */
-export function publicInputs(i: CircuitInputs): bigint[] {
+export function publicInputs(i: TokenInputs): bigint[] {
   const out: bigint[] = [];
   out.push(...i.pubkey_modulus_limbs);
   out.push(...Array.from(i.domain.storage, BigInt), BigInt(i.domain.len));
@@ -349,7 +398,7 @@ export function publicInputs(i: CircuitInputs): bigint[] {
 const hexArr = (b: Uint8Array) => `[${Array.from(b, (x) => `"0x${x.toString(16).padStart(2, "0")}"`).join(", ")}]`;
 const decArr = (v: bigint[]) => `[${v.map((x) => `"${x.toString()}"`).join(", ")}]`;
 
-export function toProverToml(i: CircuitInputs): string {
+function tokenTomlHead(i: TokenInputs): string[] {
   return [
     `pubkey_modulus_limbs = ${decArr(i.pubkey_modulus_limbs)}`,
     `scope = ${hexArr(i.scope)}`,
@@ -364,6 +413,26 @@ export function toProverToml(i: CircuitInputs): string {
     `base64_decode_offset = ${i.base64_decode_offset}`,
     `redc_params_limbs = ${decArr(i.redc_params_limbs)}`,
     `signature_limbs = ${decArr(i.signature_limbs)}`,
+  ];
+}
+
+function tokenTomlTables(i: TokenInputs): string[] {
+  return [
+    ``,
+    `[domain]`,
+    `storage = ${hexArr(i.domain.storage)}`,
+    `len = ${i.domain.len}`,
+    ``,
+    `[partial_data]`,
+    `storage = ${hexArr(i.partial_data.storage)}`,
+    `len = ${i.partial_data.len}`,
+    ``,
+  ];
+}
+
+export function toProverToml(i: CircuitInputs): string {
+  return [
+    ...tokenTomlHead(i),
     `signer_kind = ${i.signer_kind}`,
     `statement_sig = ${hexArr(i.statement_sig)}`,
     `credential_tbs = ${hexArr(i.credential_tbs)}`,
@@ -374,15 +443,28 @@ export function toProverToml(i: CircuitInputs): string {
     `att_client_data_hash = ${hexArr(i.att_client_data_hash)}`,
     `assertion_auth_data = ${hexArr(i.assertion_auth_data)}`,
     `assertion_auth_data_len = ${i.assertion_auth_data_len}`,
-    ``,
-    `[domain]`,
-    `storage = ${hexArr(i.domain.storage)}`,
-    `len = ${i.domain.len}`,
-    ``,
-    `[partial_data]`,
-    `storage = ${hexArr(i.partial_data.storage)}`,
-    `len = ${i.partial_data.len}`,
-    ``,
+    ...tokenTomlTables(i),
+  ].join("\n");
+}
+
+/** Prover.toml for oidc-domain-attestation-android. */
+export function toProverTomlAndroid(i: TokenInputs, a: AndroidSignerInputs): string {
+  return [
+    ...tokenTomlHead(i),
+    `statement_sig = ${hexArr(a.statement_sig)}`,
+    `ca2_tbs = ${hexArr(a.ca2_tbs)}`,
+    `ca2_tbs_len = ${a.ca2_tbs_len}`,
+    `ca2_sig = ${hexArr(a.ca2_sig)}`,
+    `ca3_tbs = ${hexArr(a.ca3_tbs)}`,
+    `ca3_tbs_len = ${a.ca3_tbs_len}`,
+    `ca3_sig = ${hexArr(a.ca3_sig)}`,
+    `att_tbs = ${hexArr(a.att_tbs)}`,
+    `att_tbs_len = ${a.att_tbs_len}`,
+    `att_sig = ${hexArr(a.att_sig)}`,
+    `leaf_tbs = ${hexArr(a.leaf_tbs)}`,
+    `leaf_tbs_len = ${a.leaf_tbs_len}`,
+    `leaf_sig = ${hexArr(a.leaf_sig)}`,
+    ...tokenTomlTables(i),
   ].join("\n");
 }
 

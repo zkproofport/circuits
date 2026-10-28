@@ -39,9 +39,23 @@
 // collision. The magics in use:
 //   "ZKProofport/AA/1"  coinbase_attestation, 225 bytes (attestation unrevoked)
 //   "ZKProofport/PK/1"  oidc_domain_attestation, 313 bytes (provider key)
+//
+// THE THIRD SIGNER: AN ANDROID PHONE, IN ITS OWN CIRCUIT PACKAGES
+//
+// verify_statement_android below is the Android phone: a P-256 key generated
+// in secure hardware by our app (as Google Play signs it) on a device with a
+// locked bootloader and verified boot, proven by Android key attestation
+// under Google's Key Attestation CA1 root (../android-key-attestation). It
+// signs the SAME statements (same magic, tag, length) with SHA256withECDSA.
+// It is not a third `signer_kind` here: its chain costs 1,167,923 gates
+// (2^21), and a kind is paid by every proof of a circuit whether used or not,
+// so the iPhone and server proofs would grow from 2^20. The Android signer
+// is used by separate packages (oidc-domain-attestation-android,
+// coinbase-attestation-v2-android) that serve the same circuit ids.
 
 pub mod apple_ca;
 pub mod server_key;
+pub mod android_root;
 mod tests;
 
 pub use app_attest::{
@@ -50,6 +64,11 @@ pub use app_attest::{
 use app_attest::app_attest_signing_key_under_ca;
 use apple_ca::APPLE_APP_ATTESTATION_CA_KEY;
 use server_key::SERVER_KEY;
+use android_root::GOOGLE_KEY_ATTESTATION_ROOT;
+pub use android_key_attestation::{
+    AndroidChain, ATT_TBS_MAX_LEN, CA2_TBS_MAX_LEN, CA3_TBS_MAX_LEN, LEAF_TBS_MAX_LEN,
+};
+use android_key_attestation::android_signing_key;
 
 /// The private signer-kind byte. Any other value is refused.
 pub global KIND_APP: u8 = 1;
@@ -135,6 +154,56 @@ pub fn verify_statement<let N: u32>(
     // high s, so the signer's s is put in low form before proving).
     assert(
         std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),
+        "Statement signature is invalid",
+    );
+}
+
+/// The Play app signing certificate's SHA-256, as Android reports it in the
+/// key attestation (attestationApplicationId.signature_digests): Play
+/// re-signs every release with this key, so only store-installed builds of
+/// the app match. Read 2026-10-28 from the Play Developer API
+/// (generatedApks/10301 certificateSha256Hash). Debug builds and the upload
+/// key do not match and are refused.
+global ANDROID_SIGNING_DIGEST: [u8; 32] = [
+    0xc3, 0x9b, 0x40, 0x71, 0x87, 0xd8, 0x4c, 0xe5, 0x9e, 0x90, 0xbe, 0x7f, 0xcd, 0x0b, 0xe8, 0x34,
+    0xa2, 0x26, 0x78, 0x2c, 0x24, 0x02, 0x57, 0x10, 0x2f, 0x1d, 0x0a, 0x88, 0x16, 0xc6, 0x93, 0x1f,
+];
+
+/// The Android package name (proofport-app/android applicationId).
+global ANDROID_PACKAGE: [u8; 25] = [
+    0x63, 0x6f, 0x6d, 0x2e, 0x6d, 0x61, 0x73, 0x73, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x7a, 0x6b,
+    0x70, 0x72, 0x6f, 0x6f, 0x66, 0x70, 0x6f, 0x72, 0x74,
+]; // "com.masselabs.zkproofport"
+
+/// Asserts that `statement_sig` (P-256 r || s, s in low form) is the
+/// signature, over SHA256(statement), of a key Android key attestation
+/// vouches for: generated in TEE or StrongBox by our package signed with
+/// Play's certificate, on a locked, verified-boot device, under a Remote Key
+/// Provisioning chain from Google's Key Attestation CA1 whose certificates
+/// are valid at `now` (the statement's own time). The caller checks the
+/// statement's content first, as for verify_statement.
+pub fn verify_statement_android<let N: u32>(
+    statement: [u8; N],
+    statement_sig: [u8; 64],
+    chain: AndroidChain,
+    now: u64,
+) {
+    let mut root_x: [u8; 48] = [0; 48];
+    let mut root_y: [u8; 48] = [0; 48];
+    for i in 0..48 {
+        root_x[i] = GOOGLE_KEY_ATTESTATION_ROOT[i];
+        root_y[i] = GOOGLE_KEY_ATTESTATION_ROOT[48 + i];
+    }
+    let (key_x, key_y) = android_signing_key(
+        chain,
+        root_x,
+        root_y,
+        ANDROID_PACKAGE,
+        ANDROID_SIGNING_DIGEST,
+        now,
+    );
+    assert(
+        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, sha256::digest(statement)),
         "Statement signature is invalid",
     );
 }

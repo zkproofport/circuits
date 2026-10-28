@@ -1,7 +1,7 @@
 #!/bin/bash
 # Acceptance run for a circuit that signs an EIP-712 action OR a signal hash.
 #
-# `giwa_attestation`, `dojang_playground` and `coinbase_attestation_v2` work this way. The run takes the circuit directory rather
+# `giwa_attestation`, `dojang_playground` and `coinbase_attestation_v2` (both its packages) work this way. The run takes the circuit directory rather
 # than assuming GIWA, so the next circuit with the same branch reuses it instead
 # of growing a second copy -- two copies of an acceptance run is how two
 # circuits come to be checked to different standards.
@@ -67,6 +67,13 @@ case "$CIRCUIT_REL" in
         REGEN="$SCRIPT_DIR/coinbase-attestation-v2/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
         ;;
+    coinbase-attestation-v2-android-synthetic-anchors)
+        # coinbase_attestation v2's Android package with Google's root
+        # replaced by the synthetic root (make-synthetic-anchors.sh). Real
+        # Coinbase attestation, wallet key as above.
+        REGEN="$SCRIPT_DIR/coinbase-attestation-v2-android/make-fixtures.sh"
+        REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        ;;
     *)
         echo "No fixture recipe for $CIRCUIT_REL. Add one here rather than running it by hand."
         exit 1
@@ -80,7 +87,8 @@ mkdir -p "$VECTORS"
 # Rebuild them rather than reporting a failure that is really a missing file.
 if [ ! -f Prover.toml ] || [ ! -f Prover.no-action.toml ] \
    || { [ "$CIRCUIT_REL" = dojang-playground ] && [ ! -f "$VECTORS/tx_other_signer.toml" ]; } \
-   || { [ "$CIRCUIT_REL" = coinbase-attestation-v2-synthetic-anchors ] && [ ! -f "$VECTORS/client_revoked.toml" ]; }; then
+   || { [ "$CIRCUIT_REL" = coinbase-attestation-v2-synthetic-anchors ] && [ ! -f "$VECTORS/client_revoked.toml" ]; } \
+   || { [ "$CIRCUIT_REL" = coinbase-attestation-v2-android-synthetic-anchors ] && [ ! -f "$VECTORS/client_revoked.toml" ]; }; then
   if [ -f "$REGEN_NEEDS" ]; then
     echo "  fixtures missing -- regenerating"
     $REGEN > "$VECTORS/regenerate.log" 2>&1 || {
@@ -216,6 +224,34 @@ case "$CIRCUIT_REL" in
     refuse "oidc_statement_replay"           "test-vectors/oidc_statement_replay"           "clientData is not a ZKProofport App Attest statement"
     refuse "oidc_statement_magic_swapped"    "test-vectors/oidc_statement_magic_swapped"    "clientData is for another circuit"
     EXTRA_PROOFS="server_action"
+    ;;
+  coinbase-attestation-v2-android-synthetic-anchors)
+    node "$TAMPER" Prover.toml "$VECTORS/wrong_signer_root.toml" fill signer_list_merkle_root > /dev/null \
+      && refuse "wrong_signer_root" "test-vectors/wrong_signer_root" "Signer not in valid list"
+    echo ""
+    echo "Accepted (StrongBox; Prover.toml and Prover.no-action.toml are TEE):"
+    accept "strongbox" "test-vectors/strongbox"
+    echo ""
+    echo "Refused (each needed something re-signed, so the generator wrote them):"
+    refuse "client_revoked"              "test-vectors/client_revoked"              "clientData says the attestation is revoked"
+    refuse "client_wallet_mismatch"      "test-vectors/client_wallet_mismatch"      "clientData wallet is not the proven wallet"
+    refuse "client_other_request"        "test-vectors/client_other_request"        "clientData does not bind this request"
+    refuse "client_other_scope"          "test-vectors/client_other_scope"          "clientData does not bind this scope"
+    refuse "timestamp_changed"           "test-vectors/timestamp_changed"           "clientData timestamp is not the public timestamp"
+    refuse "oidc_statement_replay"       "test-vectors/oidc_statement_replay"       "clientData is not a ZKProofport App Attest statement"
+    refuse "stmt_signed_by_other_key"    "test-vectors/stmt_signed_by_other_key"    "Statement signature is invalid"
+    refuse "stmt_high_s"                 "test-vectors/stmt_high_s"                 "Statement signature is invalid"
+    refuse "other_package"               "test-vectors/other_package"               "Key belongs to another app"
+    refuse "debug_signing_certificate"   "test-vectors/debug_signing_certificate"   "App is signed with another certificate"
+    refuse "bootloader_unlocked"         "test-vectors/bootloader_unlocked"         "Device bootloader is unlocked"
+    refuse "boot_unverified"             "test-vectors/boot_unverified"             "Device boot state is not Verified"
+    refuse "software_key"                "test-vectors/software_key"                "Key is not in secure hardware"
+    refuse "imported_key"                "test-vectors/imported_key"                "Key was not generated in secure hardware"
+    refuse "att_expired_at_attested_at"  "test-vectors/att_expired_at_attested_at"  "Certificate has expired at now"
+    refuse "other_root"                  "test-vectors/other_root"                  "Droid CA2 is not signed by the pinned Google root"
+    refuse "leaf_signed_by_other_key"    "test-vectors/leaf_signed_by_other_key"    "Leaf certificate is not signed by the attestation key"
+    refuse "ca2_sig_high_s"              "test-vectors/ca2_sig_high_s"              "Signature s value is not in canonical form"
+    EXTRA_PROOFS="no_action"
     ;;
 esac
 

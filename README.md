@@ -16,9 +16,13 @@ This repository contains executable circuit code, shared Noir libraries, generat
 
 [`dojang-playground`](dojang-playground) is a GIWA Sepolia demo circuit outside the CIP mapping.
 
-[`coinbase-attestation-v2`](coinbase-attestation-v2) is the next version of CIP-1's circuit, in development on a branch: revocation bound by an Apple App Attest or AI-server statement, an optional EIP-712 action, and a wallet nullifier. Its README has the statement format and measurements. It is not deployed to a mainnet.
+[`coinbase-attestation-v2`](coinbase-attestation-v2) is the next version of CIP-1's circuit: revocation bound by an Apple App Attest or AI-server statement, an optional EIP-712 action, and a wallet nullifier. Its README has the statement format and measurements.
 
-`coinbase-libs` is a shared implementation library. `coinbase-kyc` is an older reference-only circuit. `_archived-poc` and `zktls` are outside the current credential CIP mapping.
+### Android signer packages
+
+[`oidc-domain-attestation-android`](oidc-domain-attestation-android) and [`coinbase-attestation-v2-android`](coinbase-attestation-v2-android) serve the same circuit ids, public inputs, statements and nullifiers as `oidc-domain-attestation` and `coinbase-attestation-v2`; only the statement's signer differs. There it is an Android phone's hardware-backed key, proven in-circuit by Android key attestation ([`android-key-attestation`](android-key-attestation)): a Remote Key Provisioning chain under Google's Key Attestation CA1 root, valid at the statement's time, for a key generated in TEE or StrongBox by `com.masselabs.zkproofport` signed with its Play app signing certificate, on a device with a locked bootloader and verified boot. Each package has its own verifier (2^21). The token and Coinbase checks are shared libraries ([`oidc-libs`](oidc-libs), [`coinbase-v2-libs`](coinbase-v2-libs)); [`statement-signer`](statement-signer) pins every trust anchor.
+
+`coinbase-libs`, `coinbase-v2-libs`, `oidc-libs`, `app-attest-libs`, `android-key-attestation` and `statement-signer` are shared libraries. `coinbase-kyc` is an older reference-only circuit. `_archived-poc` and `zktls` are outside the current credential CIP mapping.
 
 ## Implemented circuits
 

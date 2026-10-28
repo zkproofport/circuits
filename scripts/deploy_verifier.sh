@@ -22,6 +22,8 @@ usage() {
     echo "  giwa-attestation               Deploy GiwaAttestation verifier"
     echo "  dojang-playground              Deploy DojangPlayground verifier"
     echo "  coinbase-attestation-v2        Deploy CoinbaseAttestationV2 (mainnets refused while the test server key is pinned)"
+    echo "  oidc-domain-attestation-android  Deploy OidcDomainAttestationAndroid (OIDC, Android key attestation signer)"
+    echo "  coinbase-attestation-v2-android  Deploy CoinbaseAttestationV2Android (Coinbase KYC v2, Android key attestation signer)"
     echo "  mdl-kr-ownership               Deploy MdlKrOwnership (Korea Mobile ID — ownership)"
     echo "  mdl-kr-age                     Deploy MdlKrAge (Korea Mobile ID — age predicate)"
     echo "  mdl-kr-region                  Deploy MdlKrRegion (Korea Mobile ID — region predicate)"
@@ -255,6 +257,31 @@ case $COMMAND in
         SOL_FILE="oidc-domain-attestation/target/OidcDomainAttestation.sol"
         SCRIPT_FILE="script/DeployOidcDomainAttestation.s.sol"
         DISPLAY_NAME="OidcDomainAttestation"
+        ;;
+    oidc-domain-attestation-android|coinbase-attestation-v2-android)
+        # The Android packages of oidc_domain_attestation and
+        # coinbase_attestation v2 (same circuit ids, Android key attestation
+        # signer). They pin Google's Key Attestation CA1 and our Play signing
+        # certificate, not the server key, but share statement-signer with the
+        # packages that do; mainnets are refused while it pins the test key,
+        # as for those.
+        case $NETWORK in
+            base|mainnet)
+                if ! node "$SCRIPT_DIR/statement-signer/set-server-key.js" --require-real; then
+                    echo -e "${RED}Error: the statement-signer server-key check failed (see the output above); not deploying $COMMAND to $NETWORK${NC}"
+                    exit 1
+                fi
+                ;;
+        esac
+        if [ "$COMMAND" = oidc-domain-attestation-android ]; then
+            SOL_FILE="oidc-domain-attestation-android/target/OidcDomainAttestationAndroid.sol"
+            SCRIPT_FILE="script/DeployOidcDomainAttestationAndroid.s.sol"
+            DISPLAY_NAME="OidcDomainAttestationAndroid"
+        else
+            SOL_FILE="coinbase-attestation-v2-android/target/CoinbaseAttestationV2Android.sol"
+            SCRIPT_FILE="script/DeployCoinbaseAttestationV2Android.s.sol"
+            DISPLAY_NAME="CoinbaseAttestationV2Android"
+        fi
         ;;
     giwa-attestation)
         SOL_FILE="giwa-attestation/target/GiwaAttestation.sol"
