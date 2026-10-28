@@ -40,12 +40,15 @@ pub mod key_description;
 mod tests;
 mod test_vectors;
 
+use app_attest::credential::verify_credential_signature;
 use app_attest::intermediate::verify_intermediate_signature;
+use bignum::{params::BigNumParams, RuntimeBigNum};
 use cert::{
     assert_ca, assert_valid_at, find_extension, OID_KEY_ATTESTATION, OID_PROVISIONING_INFO,
-    p256_key, p384_key, SIG_ALG_ECDSA_SHA256, SIG_ALG_ECDSA_SHA384, walk_tbs,
+    p256_key, p384_key, SIG_ALG_ECDSA_SHA256, SIG_ALG_ECDSA_SHA384, SIG_ALG_SHA256_RSA, walk_tbs,
 };
 use key_description::check_key_description;
+use rsa::rsa::verify_sha256_pkcs1v15;
 
 /// TBS room per certificate. Real lengths (2026): CA2 495, CA3 633,
 /// attestation key 393-400, leaf 611-709. SHA-384 pads to 128-byte blocks
@@ -152,6 +155,122 @@ pub fn android_signing_key<let P: u32>(
     );
     // The leaf's validity is the app's own choice (KeyGenParameterSpec), so it
     // is not read.
+    let leaf = walk_tbs(
+        chain.leaf_tbs,
+        chain.leaf_tbs_len,
+        SIG_ALG_ECDSA_SHA256,
+        false,
+    );
+    let (ka_count, ka_at, ka_len) = find_extension(chain.leaf_tbs, leaf, OID_KEY_ATTESTATION);
+    assert(ka_count == 1, "Leaf certificate has no single key description");
+    let _ = check_key_description(chain.leaf_tbs, ka_at, ka_len, package, signing_digest);
+
+    p256_key(chain.leaf_tbs, leaf)
+}
+
+// ---------------------------------------------------------------------------
+// FACTORY-PROVISIONED CHAINS (devices launched with Android 12 or earlier)
+// ---------------------------------------------------------------------------
+//
+// Added 2026-10-28 by user decision: these devices must be supported, and as
+// zkPassport does, a Play Integrity verdict (../play-integrity) carries what
+// key attestation alone cannot for them -- that Google has not revoked the
+// device's attestation key, which leaked factory keys are. The caller checks
+// that verdict; this function checks the chain and the key description.
+//
+// THE SHAPE, read from real factory chains (android/keyattestation testdata:
+// Pixel 3 "blueline" Android 9, Sony Xperia 10 III Android 13, two OEM
+// devices in invalid/; all EC keys):
+//
+//   Google's RSA-4096 root (serialNumber f92009e853b6b045; one key across its
+//                         2016, 2019 and 2022 certificates), pinned by the
+//                         caller as modulus and Barrett parameter
+//     -> intermediate     P-384 key, sha256WithRSAEncryption by the root, a CA
+//     -> batch key        P-256 key, ecdsa-with-SHA256 by the intermediate
+//                         (not always marked a CA: Sony's is not)
+//     -> leaf             P-256, ecdsa-with-SHA256 by the batch key, the key
+//                         attestation extension
+//
+// zkPassport (rk_rsa/ik_count_2/ik_ecdsa_p384_sha256/ik_ecdsa_p256_sha256) has
+// this shape as one of its variants. Validity dates are not checked: Google
+// says factory certificates stay trustworthy after they expire unless revoked
+// ("Expired factory keys: Still trustworthy"), and revocation is the
+// verdict's job.
+
+pub global IK_TBS_MAX_LEN: u32 = 512;
+pub global BATCH_TBS_MAX_LEN: u32 = 512;
+/// RSA-4096 in noir-bignum's 120-bit limbs.
+pub global RSA4096_LIMBS: u32 = 35;
+
+pub struct FactoryChain {
+    /// The intermediate's TBS and the root's RSA signature over it (35
+    /// little-endian 120-bit limbs).
+    pub ik_tbs: [u8; IK_TBS_MAX_LEN],
+    pub ik_tbs_len: u32,
+    pub ik_sig: [u128; RSA4096_LIMBS],
+    /// The batch certificate's TBS and the intermediate's P-384 signature
+    /// over its SHA-256, r || s, s low.
+    pub batch_tbs: [u8; BATCH_TBS_MAX_LEN],
+    pub batch_tbs_len: u32,
+    pub batch_sig: [u8; 96],
+    /// The leaf's TBS and the batch key's P-256 signature, r || s, s low.
+    pub leaf_tbs: [u8; LEAF_TBS_MAX_LEN],
+    pub leaf_tbs_len: u32,
+    pub leaf_sig: [u8; 64],
+}
+
+/// The leaf's P-256 key under a factory chain from the pinned RSA root, with
+/// the same key-description requirements as android_signing_key.
+pub fn android_factory_signing_key<let P: u32>(
+    chain: FactoryChain,
+    root_modulus: [u128; RSA4096_LIMBS],
+    root_redc: [u128; RSA4096_LIMBS],
+    package: [u8; P],
+    signing_digest: [u8; 32],
+) -> ([u8; 32], [u8; 32]) {
+    assert(chain.leaf_tbs_len != 0, "No Android key attestation chain");
+    assert(
+        (chain.ik_tbs_len <= IK_TBS_MAX_LEN)
+            & (chain.batch_tbs_len <= BATCH_TBS_MAX_LEN)
+            & (chain.leaf_tbs_len <= LEAF_TBS_MAX_LEN),
+        "Certificate TBS longer than the circuit allows",
+    );
+
+    // root (RSA-4096, PKCS#1 v1.5, SHA-256) -> intermediate
+    let ik_digest = sha256::sha256_var(chain.ik_tbs, chain.ik_tbs_len);
+    let params: BigNumParams<RSA4096_LIMBS, 4096> =
+        BigNumParams::new(false, root_modulus, root_redc);
+    let sig: RuntimeBigNum<RSA4096_LIMBS, 4096> = RuntimeBigNum { params, limbs: chain.ik_sig };
+    assert(
+        verify_sha256_pkcs1v15(ik_digest, sig, 65537),
+        "Intermediate is not signed by the pinned Google RSA root",
+    );
+    let ik = walk_tbs(chain.ik_tbs, chain.ik_tbs_len, SIG_ALG_SHA256_RSA, false);
+    assert_ca(chain.ik_tbs, ik);
+    let (ik_x, ik_y) = p384_key(chain.ik_tbs, ik);
+
+    // intermediate (P-384 over SHA-256) -> batch
+    let (rb, sb) = split48(chain.batch_sig);
+    assert(
+        verify_credential_signature(ik_x, ik_y, chain.batch_tbs, chain.batch_tbs_len, rb, sb),
+        "Batch certificate is not signed by the intermediate",
+    );
+    let batch = walk_tbs(
+        chain.batch_tbs,
+        chain.batch_tbs_len,
+        SIG_ALG_ECDSA_SHA256,
+        false,
+    );
+    let (ka_in_batch, _, _) = find_extension(chain.batch_tbs, batch, OID_KEY_ATTESTATION);
+    assert(ka_in_batch == 0, "Batch certificate carries a key description");
+    let (batch_x, batch_y) = p256_key(chain.batch_tbs, batch);
+
+    // batch -> leaf
+    let leaf_digest = sha256::sha256_var(chain.leaf_tbs, chain.leaf_tbs_len);
+    assert(
+        std::ecdsa_secp256r1::verify_signature(batch_x, batch_y, chain.leaf_sig, leaf_digest),
+        "Leaf certificate is not signed by the batch key",
+    );
     let leaf = walk_tbs(
         chain.leaf_tbs,
         chain.leaf_tbs_len,

@@ -1,0 +1,8 @@
+[package]
+name = "factory_chain_only"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+android_key_attestation = { path = "../../../android-key-attestation" }

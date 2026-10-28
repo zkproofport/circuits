@@ -17,10 +17,20 @@ root is accepted, with the root's key pinned by the caller:
 | RKP attestation key | P-256 | CA3, SHA-256 | CA, valid at `now`, provisioning-information extension, no key description |
 | leaf | P-256 | attestation key, SHA-256 | the key description, below |
 
-Factory-provisioned chains (the RSA root and OEM intermediates) are refused:
-the keys on Google's revocation list are factory keys, and a circuit cannot
-read that list. RKP certificates are short-lived instead, so their validity is
-checked against the statement's time.
+RKP certificates are short-lived, so their validity is checked against the
+statement's time.
+
+## Factory-provisioned chains
+
+`android_factory_signing_key` takes the chain of devices launched with Android
+12 or earlier: Google's RSA-4096 root (pinned by the caller as modulus and
+Barrett parameter) -> intermediate (P-384, sha256WithRSAEncryption, a CA) ->
+batch key (P-256, ecdsa-with-SHA256) -> leaf, with the same key-description
+checks. Validity dates are not read (Google: expired factory certificates stay
+trustworthy unless revoked). The keys on Google's revocation list are factory
+keys and a circuit cannot read that list, so callers pair this with a Play
+Integrity verdict (`../play-integrity`; statement-signer
+`verify_statement_android_factory`), as zkPassport does.
 
 ## The key description
 
@@ -47,7 +57,8 @@ issuer's signature as r || s with s in low form.
 
 `nargo test` runs on real Google-signed chains (`test-vectors/`, Apache-2.0,
 from github.com/android/keyattestation testdata): a Pixel TEE and StrongBox
-key, accepted for their own test app and refused for any other, with every
-link, validity edge and key-description field exercised.
+RKP key and a Sony factory key, accepted for their own app and refused for
+any other, a Pixel 3 factory key refused for its unlocked bootloader, with
+every link, validity edge and key-description field exercised.
 `scripts/android-key-attestation/export-vector.js` regenerates
 `src/test_vectors.nr` from those files.

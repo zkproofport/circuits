@@ -21,7 +21,20 @@ const crypto = require('crypto');
 const N_P256 = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
 const N_P384 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973');
 
-const LIMITS = { ca2: 600, ca3: 768, att: 512, leaf: 1024 };
+const LIMITS = { ca2: 600, ca3: 768, att: 512, leaf: 1024, ik: 512, batch: 512 };
+
+/** Google's RSA-4096 attestation root (serialNumber f92009e853b6b045), its
+ * modulus as hex: one key behind its 2016, 2019 and 2022 certificates
+ * (developer.android.com/privacy-and-security/security-key-attestation). */
+const GOOGLE_RSA_ROOT_MODULUS_HEX =
+  'afb6c7822bb1a701ec2bb42e8bcc541663abef982f32c77f7531030c97524b1b5fe809fbc72aa9451f743cbd9a6f1335744aa55e77f6b6ac3535ee17c25e6395' +
+  '17dd9c92e6374a53cbfe258f8ffbb6fd129378a22a4ca99c452d47a59f3201f44197ca1ccd7e762fb2f53151b6feb2fffd2b6fe4fe5bc6bd9ec34bfe08239daa' +
+  'fceb8eb5a8ed2b3acd9c5e3a7790e1b51442793159859811ad9eb2a96bbdd7a57c93a91c41fccd27d67fd6f671aa0b815261ad384fa37944864604ddb3d8c4f9' +
+  '20a19b1656c2f14ad6d03c56ec060899041c1ed1a5fe6d3440b556bad1d0a152589c53e55d370762f0122eef91861b1b0e6c4c80927499c0e9bec0b83e3bc1f9' +
+  '3c72c049604bbd2f1345e62c3f8e26dbec06c94766f3c128239d4f4312fad8123887e06becf567583bf8355a81feeabaf99a83c8df3e2a322afc672bf120b135' +
+  '158b6821ceaf309b6eee77f98833b018daa10e451f06a374d50781f359082966bb778b9308942698e74e0bcd24628a01c2cc03e51f0b3e5b4ac1e4df9eaf9ff6' +
+  'a492a77c1483882885015b422ce67b80b88c9b48e13b607ab545c723ff8c44f8f2d368b9f6520d31145ebf9e862ad71df6a3bfd2450959d653740d97a12f368b' +
+  '13ef66d5d0a54a6e2f5d9a6fef446832bc67844725861f093dd0e6f3405da89643ef0f4d69b6420051fdb93049673e36950580d3cdf4fbd08bc5848395260063';
 
 /** Key Attestation CA1, X || Y (P-384): Google's root for attestation chains
  * from 2026-02-01 (developer.android.com/privacy-and-security/security-key-attestation). */
@@ -127,12 +140,72 @@ function chainInputs(ders, rootKey) {
 }
 
 /** All certificates in a PEM bundle, as DER. */
+/** A bigint as noir-bignum limbs: `count` little-endian limbs of 120 bits. */
+function limbs120(v, count) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    out.push(v & ((1n << 120n) - 1n));
+    v >>= 120n;
+  }
+  if (v !== 0n) throw new Error(`value does not fit ${count} limbs of 120 bits`);
+  return out;
+}
+
+/** RSA-4096 modulus -> { modulus, redc } limbs as noir-bignum's BigNumParams takes them
+ * (redc = floor(2^(2*4096+4) / n), as the OIDC builder does for 2048). */
+function rsa4096Params(modulusHex) {
+  const n = BigInt('0x' + modulusHex);
+  if (n >> 4095n !== 1n) throw new Error('not a 4096-bit modulus');
+  return { modulus: limbs120(n, 35), redc: limbs120((1n << (2n * 4096n + 4n)) / n, 35) };
+}
+
+/**
+ * FactoryChain inputs from [leaf, batch, intermediate, root] (DER). The root
+ * may be omitted; when present its RSA modulus must be `rootModulusHex`
+ * (GOOGLE_RSA_ROOT_MODULUS_HEX for the real circuit). Shape: intermediate
+ * P-384 signed with sha256WithRSAEncryption, batch P-256 signed by it with
+ * ecdsa-with-SHA256, leaf P-256.
+ */
+function factoryChainInputs(ders, rootModulusHex) {
+  if (typeof rootModulusHex !== 'string' || rootModulusHex.length !== 1024) {
+    throw new Error('factoryChainInputs needs the pinned RSA-4096 root modulus (1024 hex characters)');
+  }
+  if (ders.length !== 3 && ders.length !== 4) {
+    throw new Error(`A factory chain has 3 certificates below the root (leaf, batch, intermediate); got ${ders.length} in all.`);
+  }
+  const [leaf, batch, ik, root] = ders.map(d => Buffer.from(d));
+  if (root) {
+    const jwk = new crypto.X509Certificate(root).publicKey.export({ format: 'jwk' });
+    if (jwk.kty !== 'RSA' || Buffer.from(jwk.n, 'base64url').toString('hex') !== rootModulusHex.toLowerCase()) {
+      throw new Error('The chain does not end at the pinned Google RSA root');
+    }
+  }
+  certKey(ik, 'P-384');
+  certKey(batch, 'P-256');
+  const L = splitCertificate(leaf);
+  const B = splitCertificate(batch);
+  const I = splitCertificate(ik);
+  return {
+    ik_tbs: pad(I.tbs, LIMITS.ik, 'Intermediate'),
+    ik_tbs_len: I.tbs.length,
+    ik_sig: limbs120(BigInt('0x' + Buffer.from(I.sigDer).toString('hex')), 35), // RSA signature, raw
+    batch_tbs: pad(B.tbs, LIMITS.batch, 'Batch'),
+    batch_tbs_len: B.tbs.length,
+    batch_sig: rawLowS(B.sigDer, 48, N_P384), // intermediate (P-384)
+    leaf_tbs: pad(L.tbs, LIMITS.leaf, 'Leaf'),
+    leaf_tbs_len: L.tbs.length,
+    leaf_sig: rawLowS(L.sigDer, 32, N_P256), // batch key (P-256)
+    leaf_key: certKey(leaf, 'P-256'),
+  };
+}
+
 function pemChain(text) {
   return [...text.matchAll(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/g)]
     .map(m => Buffer.from(m[1].replace(/\s+/g, ''), 'base64'));
 }
 
 module.exports = {
-  N_P256, N_P384, LIMITS, GOOGLE_KEY_ATTESTATION_CA1,
+  N_P256, N_P384, LIMITS, GOOGLE_KEY_ATTESTATION_CA1, GOOGLE_RSA_ROOT_MODULUS_HEX,
+  limbs120, rsa4096Params, factoryChainInputs,
   der, splitCertificate, rawLowS, certKey, chainInputs, pemChain,
 };

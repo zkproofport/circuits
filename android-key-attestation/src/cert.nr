@@ -23,6 +23,11 @@ pub global SIG_ALG_ECDSA_SHA256: [u8; 12] =
 pub global SIG_ALG_ECDSA_SHA384: [u8; 12] =
     [0x30, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x03];
 
+/// AlgorithmIdentifier sha256WithRSAEncryption (1.2.840.113549.1.1.11), NULL
+/// parameters: how Google's RSA root signs factory intermediates.
+pub global SIG_ALG_SHA256_RSA: [u8; 15] =
+    [0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b, 0x05, 0x00];
+
 /// SubjectPublicKeyInfo of an uncompressed P-256 key, through the 0x04 marker.
 pub global SPKI_P256_PREFIX: [u8; 27] = [
     0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
@@ -60,10 +65,10 @@ pub struct Tbs {
 /// signature algorithm (`sig_alg`, the one its issuer used), the validity
 /// (as unix seconds when `read_validity`, zeros otherwise), and the bounds of
 /// the SPKI and the extension list.
-pub fn walk_tbs<let N: u32>(
+pub fn walk_tbs<let N: u32, let K: u32>(
     tbs: [u8; N],
     tbs_len: u32,
-    sig_alg: [u8; 12],
+    sig_alg: [u8; K],
     read_validity: bool,
 ) -> Tbs {
     assert(tbs_len <= N, "Certificate TBS longer than the circuit allows");
@@ -84,7 +89,7 @@ pub fn walk_tbs<let N: u32>(
     pos += shl + scl;
 
     assert(bytes_at(tbs, pos, sig_alg), "Certificate is signed with another algorithm");
-    pos += 12;
+    pos += K;
 
     // issuer
     let (ihl, icl) = der_element(tbs, pos, 0x30);

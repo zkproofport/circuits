@@ -1,0 +1,9 @@
+[package]
+name = "rsa4096_only"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+rsa = { path = "../../../deps/noir_rsa" }
+bignum = { path = "../../../deps/noir-bignum" }

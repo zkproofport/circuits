@@ -6,17 +6,23 @@
 // involved), and in each circuit's acceptance run with synthetic chains
 // signed by keys the fixtures hold.
 
-use crate::{android_signing_key, AndroidChain};
+use crate::{android_factory_signing_key, android_signing_key, AndroidChain, FactoryChain};
 use crate::cert::{p384_key, SIG_ALG_ECDSA_SHA384, walk_tbs};
 use crate::key_description::check_key_description;
 use crate::test_vectors::{
+    BLUELINE_BATCH_SIG, BLUELINE_BATCH_TBS, BLUELINE_BATCH_TBS_LEN, BLUELINE_DIGEST,
+    BLUELINE_IK_SIG, BLUELINE_IK_TBS, BLUELINE_IK_TBS_LEN, BLUELINE_LEAF_KEY, BLUELINE_LEAF_SIG,
+    BLUELINE_LEAF_TBS, BLUELINE_LEAF_TBS_LEN, BLUELINE_PACKAGE, RSA_ROOT_MODULUS, RSA_ROOT_REDC,
     SB_ATT_LEVEL, SB_ATT_SIG, SB_ATT_TBS, SB_ATT_TBS_LEN, SB_BOOT_STATE, SB_CA2_SIG, SB_CA2_TBS,
     SB_CA2_TBS_LEN, SB_CA3_SIG, SB_CA3_TBS, SB_CA3_TBS_LEN, SB_DIGEST, SB_DIGEST_AT, SB_KA_AT,
     SB_KA_LEN, SB_KM_LEVEL, SB_LEAF_KEY, SB_LEAF_SIG, SB_LEAF_TBS, SB_LEAF_TBS_LEN, SB_LOCKED,
-    SB_ORIGIN, SB_PACKAGE, SB_PKG_AT, TEE_ATT_LEVEL, TEE_ATT_SIG, TEE_ATT_TBS, TEE_ATT_TBS_LEN,
-    TEE_BOOT_STATE, TEE_CA2_SIG, TEE_CA2_TBS, TEE_CA2_TBS_LEN, TEE_CA3_SIG, TEE_CA3_TBS,
-    TEE_CA3_TBS_LEN, TEE_DIGEST, TEE_DIGEST_AT, TEE_KA_AT, TEE_KA_LEN, TEE_KM_LEVEL, TEE_LEAF_KEY,
-    TEE_LEAF_SIG, TEE_LEAF_TBS, TEE_LEAF_TBS_LEN, TEE_LOCKED, TEE_ORIGIN, TEE_PACKAGE, TEE_PKG_AT,
+    SB_ORIGIN, SB_PACKAGE, SB_PKG_AT, SONY_BATCH_SIG, SONY_BATCH_TBS, SONY_BATCH_TBS_LEN,
+    SONY_DIGEST, SONY_IK_SIG, SONY_IK_TBS, SONY_IK_TBS_LEN, SONY_LEAF_KEY, SONY_LEAF_SIG,
+    SONY_LEAF_TBS, SONY_LEAF_TBS_LEN, SONY_PACKAGE, TEE_ATT_LEVEL, TEE_ATT_SIG, TEE_ATT_TBS,
+    TEE_ATT_TBS_LEN, TEE_BOOT_STATE, TEE_CA2_SIG, TEE_CA2_TBS, TEE_CA2_TBS_LEN, TEE_CA3_SIG,
+    TEE_CA3_TBS, TEE_CA3_TBS_LEN, TEE_DIGEST, TEE_DIGEST_AT, TEE_KA_AT, TEE_KA_LEN, TEE_KM_LEVEL,
+    TEE_LEAF_KEY, TEE_LEAF_SIG, TEE_LEAF_TBS, TEE_LEAF_TBS_LEN, TEE_LOCKED, TEE_ORIGIN, TEE_PACKAGE,
+    TEE_PKG_AT,
 };
 
 global ROOT: [u8; 96] = [
@@ -374,4 +380,142 @@ fn a_length_past_the_array_is_refused_by_name() {
     let mut c = tee();
     c.leaf_tbs_len = 1025;
     let _ = android_signing_key(c, x, y, TEE_PACKAGE, TEE_DIGEST, NOW);
+}
+
+// ---- factory-provisioned chains (Google's RSA root) --------------------------
+
+fn sony() -> FactoryChain {
+    FactoryChain {
+        ik_tbs: SONY_IK_TBS,
+        ik_tbs_len: SONY_IK_TBS_LEN,
+        ik_sig: SONY_IK_SIG,
+        batch_tbs: SONY_BATCH_TBS,
+        batch_tbs_len: SONY_BATCH_TBS_LEN,
+        batch_sig: SONY_BATCH_SIG,
+        leaf_tbs: SONY_LEAF_TBS,
+        leaf_tbs_len: SONY_LEAF_TBS_LEN,
+        leaf_sig: SONY_LEAF_SIG,
+    }
+}
+
+fn blueline() -> FactoryChain {
+    FactoryChain {
+        ik_tbs: BLUELINE_IK_TBS,
+        ik_tbs_len: BLUELINE_IK_TBS_LEN,
+        ik_sig: BLUELINE_IK_SIG,
+        batch_tbs: BLUELINE_BATCH_TBS,
+        batch_tbs_len: BLUELINE_BATCH_TBS_LEN,
+        batch_sig: BLUELINE_BATCH_SIG,
+        leaf_tbs: BLUELINE_LEAF_TBS,
+        leaf_tbs_len: BLUELINE_LEAF_TBS_LEN,
+        leaf_sig: BLUELINE_LEAF_SIG,
+    }
+}
+
+#[test]
+fn a_real_sony_factory_chain_verifies_for_its_own_app() {
+    let k = android_factory_signing_key(
+        sony(),
+        RSA_ROOT_MODULUS,
+        RSA_ROOT_REDC,
+        SONY_PACKAGE,
+        SONY_DIGEST,
+    );
+    assert(key_of(k) == SONY_LEAF_KEY);
+}
+
+// A REAL refusal: Google's Pixel 3 test device has an unlocked bootloader.
+// Every certificate verifies; its own key description refuses it.
+#[test(should_fail_with = "Device bootloader is unlocked")]
+fn a_real_pixel_3_with_an_unlocked_bootloader_is_refused() {
+    let _ = android_factory_signing_key(
+        blueline(),
+        RSA_ROOT_MODULUS,
+        RSA_ROOT_REDC,
+        BLUELINE_PACKAGE,
+        BLUELINE_DIGEST,
+    );
+}
+
+#[test(should_fail_with = "Key belongs to another app")]
+fn a_real_factory_chain_is_not_ours() {
+    let _ = android_factory_signing_key(
+        sony(),
+        RSA_ROOT_MODULUS,
+        RSA_ROOT_REDC,
+        OUR_PACKAGE,
+        SONY_DIGEST,
+    );
+}
+
+// noir_rsa asserts inside its padding comparison, so the refusal carries no
+// message of ours; the circuit acceptance runs check it the same way.
+#[test(should_fail)]
+fn a_changed_factory_intermediate_is_refused() {
+    let mut c = sony();
+    c.ik_tbs[100] ^= 1;
+    let _ = android_factory_signing_key(
+        c,
+        RSA_ROOT_MODULUS,
+        RSA_ROOT_REDC,
+        SONY_PACKAGE,
+        SONY_DIGEST,
+    );
+}
+
+#[test(should_fail_with = "Batch certificate is not signed by the intermediate")]
+fn a_changed_batch_certificate_is_refused() {
+    let mut c = sony();
+    c.batch_tbs[100] ^= 1;
+    let _ = android_factory_signing_key(
+        c,
+        RSA_ROOT_MODULUS,
+        RSA_ROOT_REDC,
+        SONY_PACKAGE,
+        SONY_DIGEST,
+    );
+}
+
+#[test(should_fail_with = "Leaf certificate is not signed by the batch key")]
+fn another_devices_leaf_under_this_batch_key_is_refused() {
+    let mut c = sony();
+    c.leaf_tbs = BLUELINE_LEAF_TBS;
+    c.leaf_tbs_len = BLUELINE_LEAF_TBS_LEN;
+    c.leaf_sig = BLUELINE_LEAF_SIG;
+    let _ = android_factory_signing_key(
+        c,
+        RSA_ROOT_MODULUS,
+        RSA_ROOT_REDC,
+        SONY_PACKAGE,
+        SONY_DIGEST,
+    );
+}
+
+#[test(should_fail_with = "Batch certificate is not signed by the intermediate")]
+fn another_intermediate_is_refused() {
+    // Pixel 3's batch certificate under Sony's intermediate.
+    let mut c = sony();
+    c.batch_tbs = BLUELINE_BATCH_TBS;
+    c.batch_tbs_len = BLUELINE_BATCH_TBS_LEN;
+    c.batch_sig = BLUELINE_BATCH_SIG;
+    let _ = android_factory_signing_key(
+        c,
+        RSA_ROOT_MODULUS,
+        RSA_ROOT_REDC,
+        SONY_PACKAGE,
+        SONY_DIGEST,
+    );
+}
+
+#[test(should_fail_with = "Certificate TBS longer than the circuit allows")]
+fn a_factory_length_past_the_array_is_refused_by_name() {
+    let mut c = sony();
+    c.ik_tbs_len = 513;
+    let _ = android_factory_signing_key(
+        c,
+        RSA_ROOT_MODULUS,
+        RSA_ROOT_REDC,
+        SONY_PACKAGE,
+        SONY_DIGEST,
+    );
 }
