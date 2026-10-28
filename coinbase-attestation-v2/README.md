@@ -7,8 +7,8 @@ signer, one circuit, and the proof does not say which signed:
 
 | Kind | Who | Trust anchor pinned in the circuit |
 |---|---|---|
-| app | the phone, through Apple App Attest | Apple's App Attest INTERMEDIATE key, "Apple App Attestation CA 1" (`src/apple_ca.nr`) |
-| server | the AI server (proofport-ai), through a Cloud KMS key | the server's P-256 key (`src/server_key.nr`) -- **currently the INSECURE test key** |
+| app | the phone, through Apple App Attest | Apple's App Attest INTERMEDIATE key, "Apple App Attestation CA 1" (`statement-signer/src/apple_ca.nr`) |
+| server | the AI server (proofport-ai), through a Cloud KMS key | the server's P-256 key (`statement-signer/src/server_key.nr`) -- **currently the INSECURE test key** |
 
 Built from the `coinbase_app_attest_poc` prototype (circuits `b281485`, build
 output `33344e2`, which proofport-app pins; that commit stays reachable on this
@@ -89,7 +89,7 @@ app/SDK/AI release). Watch for it from 2029 at the latest.
 
 `scripts/coinbase-attestation-v2/check-apple-vector.js` downloads Apple's root
 from apple.com, checks that it signed CA 1's certificate (`apple-vector.json`),
-and fails unless `src/apple_ca.nr` holds that certificate's key. The
+and fails unless `statement-signer/src/apple_ca.nr` holds that certificate's key. The
 `../app-attest-libs` tests verify the same root -> CA 1 link in-circuit on
 Apple's bytes (`app_attest_signing_key`, the root-pinned entry point, stays in
 the library for that reason; this circuit calls `app_attest_signing_key_under_ca`).
@@ -173,7 +173,7 @@ Exactly this, in proofport-ai, for one proof request:
 2. Build the 225-byte `client_data` above, timestamp = now, revoked = `0x00`,
    with the request digest and scope of THIS request.
 3. `digest = SHA256(client_data)`.
-4. Cloud KMS `asymmetricSign` on the key version pinned in `src/server_key.nr`
+4. Cloud KMS `asymmetricSign` on the key version pinned in `statement-signer/src/server_key.nr`
    (algorithm `EC_SIGN_P256_SHA256`) with `digest.sha256 = digest`.
    Equivalently: ECDSA P-256 with SHA-256 over the 225 bytes.
 5. KMS returns a DER `ECDSA-Sig-Value`. Convert to `r || s`, each 32 bytes
@@ -200,18 +200,18 @@ not reveal the kind, so a dApp cannot choose to accept only app statements.
 
 ### The server key: placeholder, test key, and the swap
 
-`src/server_key.nr` holds one line, `pub global SERVER_KEY: [u8; 64] = [...]`
+`statement-signer/src/server_key.nr` holds one line, `pub global SERVER_KEY: [u8; 64] = [...]`
 (X || Y). Until the Cloud KMS key exists it is the **INSECURE test key**: its
 private key is `SHA256("ZKProofport coinbase_attestation_v2 INSECURE test server key")`
 mod n (`scripts/coinbase-attestation-v2/anchors.js`), so anyone can sign
 server statements for it.
 
 ```
-node scripts/coinbase-attestation-v2/set-server-key.js --kms projects/P/locations/L/keyRings/R/cryptoKeys/K/cryptoKeyVersions/V
-node scripts/coinbase-attestation-v2/set-server-key.js --pem public.pem
-node scripts/coinbase-attestation-v2/set-server-key.js --test-key       # back to the placeholder
-node scripts/coinbase-attestation-v2/set-server-key.js --show
-node scripts/coinbase-attestation-v2/set-server-key.js --require-real   # exit 1 while the test key is in
+node scripts/statement-signer/set-server-key.js --kms projects/P/locations/L/keyRings/R/cryptoKeys/K/cryptoKeyVersions/V
+node scripts/statement-signer/set-server-key.js --pem public.pem
+node scripts/statement-signer/set-server-key.js --test-key       # back to the placeholder
+node scripts/statement-signer/set-server-key.js --show
+node scripts/statement-signer/set-server-key.js --require-real   # exit 1 while the test key is in
 ```
 
 `--kms` runs `gcloud kms keys versions describe` (refuses any algorithm but
@@ -228,12 +228,23 @@ in the synthetic-anchors copy.
 
 No fixture can carry an Apple-signed credential certificate for our App ID
 together with the device key that signs the assertion; that needs a phone.
-So `scripts/coinbase-attestation-v2/make-fixtures.sh` builds
-`../coinbase-attestation-v2-synthetic-anchors/` (gitignored) from this
-circuit's current source, replacing only `src/apple_ca.nr` (with a synthetic
-P-384 intermediate, private key `SHA256("ZKProofport coinbase_attestation_v2 INSECURE synthetic App Attest intermediate")`)
-and `src/server_key.nr` (with the test key). It refuses to continue if any
-other file differs. Every acceptance, refusal and mutation case runs there.
+So `scripts/coinbase-attestation-v2/make-fixtures.sh` runs
+`scripts/statement-signer/make-synthetic-anchors.sh`, which builds
+`../coinbase-attestation-v2-synthetic-anchors/` (this circuit's source,
+unchanged) against `../statement-signer-synthetic-anchors/` (the signer
+library with only `src/apple_ca.nr` replaced by a synthetic P-384
+intermediate, private key `SHA256("ZKProofport coinbase_attestation_v2 INSECURE synthetic App Attest intermediate")`,
+and `src/server_key.nr` by the test key); both gitignored. It refuses to
+continue if anything else differs. Every acceptance, refusal and mutation
+case runs there.
+
+The signer parts (both anchors, the App ID, the private signer kind, the one
+P-256 statement check) live in `../statement-signer`, shared with
+`oidc_domain_attestation` since 2026-10-28; moving them there left this
+circuit's vk, verifier and .srs byte-identical. That circuit's 313-byte
+"ZKProofport/PK/1" statement is signed by the same keys; the refusal cases
+`oidc_statement_replay` and `oidc_statement_magic_swapped` show its
+signature cannot stand in for a clientData here.
 
 `real-anchors-check.sh` runs the cases that need THIS circuit:
 

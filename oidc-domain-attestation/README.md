@@ -8,6 +8,14 @@ app path) a request nonce. The circuit id is unchanged: `oidc_domain_attestation
 v1 bound none of `aud`, `iss`, `exp` or `nonce`, so any Google ID token issued
 to any site for the same email produced the same nullifier.
 
+Since 2026-10-28 the circuit also requires a **provider-key statement**: a
+signer this project trusts -- the phone through Apple App Attest, or the AI
+server through Cloud KMS -- says the RSA key the token was checked with was in
+the provider's published key list at `now`. Without it, a self-made RSA key
+and a self-signed token proved any email on chain, because a contract cannot
+fetch a JWKS and Google's and Microsoft's key lists carry no signature of
+their own. The public inputs do not change.
+
 ## Public inputs (214 field elements)
 
 | Offset | Count | Input | Meaning |
@@ -29,7 +37,8 @@ What the circuit checks, and what stays with the verifier:
 
 | Circuit | Verifier |
 |---|---|
-| RSA signature under the public modulus | the modulus is a current Google / Microsoft key (live JWKS) |
+| RSA signature under the public modulus | (off-chain, defence in depth) the modulus is a current Google / Microsoft key (live JWKS) |
+| a provider-key statement for this modulus, `provider` and `now`, signed by the app or the server (kind private) | -- |
 | `iss`: Google `https://accounts.google.com` or `accounts.google.com`; Microsoft `https://login.microsoftonline.com/{lowercase tenant GUID}/v2.0` | which tenants, if any, to restrict to |
 | `keccak256(aud) == aud_hash` | `aud_hash` is one of its client ids |
 | `iat <= now < exp` | `now` is close enough to its own clock |
@@ -56,6 +65,60 @@ Client ids in use (2026-10-27): Google web
   claim value the user controls (a display name) could be chosen to decode,
   shifted, into something like `"email":"...",`. v1 accepted any offset.
 - `MAX_PARTIAL_DATA_LENGTH` is 2048 (v1: 768).
+- Ten private inputs follow `signature_limbs`, in this order (the names and
+  sizes of coinbase_attestation v2's): `signer_kind` u8 (1 app, 2 server),
+  `statement_sig` [u8; 64] (P-256 r || s, s LOW), `credential_tbs` [u8; 1000],
+  `credential_tbs_len`, `credential_sig` [u8; 96], `att_auth_data` [u8; 256],
+  `att_auth_data_len`, `att_client_data_hash` [u8; 32], `assertion_auth_data`
+  [u8; 128], `assertion_auth_data_len`. The server passes zeros for every App
+  Attest input. Reference: `serverSigner` / `appSigner` in `scripts/oidc-inputs.ts`.
+
+## Provider-key statement
+
+Built in-circuit from public inputs (`src/provider_key.nr`); the signer writes
+the same 313 bytes:
+
+| Offset | Length | Field |
+|---|---|---|
+| 0 | 16 | `"ZKProofport/PK/1"` |
+| 16 | 32 | `keccak256("oidc_domain_attestation")` = `0x90bb379d...8e062b` |
+| 48 | 1 | `provider` (0 Google, 1 Microsoft) |
+| 49 | 8 | `now`, unix seconds, big-endian |
+| 57 | 256 | the RSA modulus `n`, big-endian (the JWKS `n`, base64url-decoded) |
+
+Each 120-bit limb of `pubkey_modulus_limbs` is range-checked and the 14 bytes
+above bit 2048 must be zero, so the signed bytes name exactly the modulus the
+RSA check used.
+
+Who signs, and how (`../statement-signer`, shared with coinbase_attestation
+v2, which pins both keys):
+
+- **server (kind 2)**: the AI server fetches the provider's live JWKS, refuses
+  unless `n` is in it, and signs with Cloud KMS `asymmetricSign`,
+  `digest.sha256 = SHA256(statement)`, on the key coinbase v2 uses
+  (`projects/masselabs-zkproofport/locations/us-central1/keyRings/proofport-ai/cryptoKeys/coinbase-kyc-v2-statement/cryptoKeyVersions/1`);
+  DER -> r || s, s put in low form, verified locally before proving.
+- **app (kind 1)**: the phone, after the same live-JWKS check, asks App Attest
+  for an assertion with clientDataHash = `SHA256(statement)`; the circuit
+  checks the credential certificate under Apple's pinned "App Attestation
+  CA 1", the attestation authData (production AAGUID, our App ID) and the
+  assertion, exactly as in coinbase v2. iOS only: Android has no App Attest.
+
+**One key, two statements.** The KMS key and each device's App Attest key sign
+both coinbase v2's 225-byte `"ZKProofport/AA/1"` statement and this 313-byte
+one. They differ in magic, circuit tag and length, and each circuit builds or
+checks all three, so a signature over one can stand in for the other only by
+a SHA-256 collision (refusal cases `stmt_wrong_magic`, `stmt_other_tag`,
+`stmt_coinbase_replay_*` here; `oidc_statement_*` in coinbase v2). A separate
+key would not narrow anything that matters: the same server process and
+service accounts would hold both, the phone has one App Attest key for both,
+and the circuit pins its key, so a second key would mean a second pin to keep
+in step.
+
+The statement does not bind the request (scope, nonce): it states a public
+fact about a key, true for every token that key signed at `now`. Replaying it
+helps nobody without a token that key signed, and the verifier already bounds
+`now`.
 
 ## Token layout
 
