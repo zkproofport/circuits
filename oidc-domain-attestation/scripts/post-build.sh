@@ -5,7 +5,7 @@
 # Run by scripts/build.sh after the circuit compiles; also runnable alone:
 #   oidc-domain-attestation/scripts/post-build.sh
 #
-#   1. the statement-signer library's tests and this circuit's Noir tests;
+#   1. the Noir tests of statement-signer and oidc-libs (the token checks);
 #   2. the synthetic-anchors copy (scripts/statement-signer/
 #      make-synthetic-anchors.sh): the circuit unchanged, the library's Apple
 #      intermediate and server key replaced by keys the generator holds;
@@ -35,7 +35,7 @@ CIRCUIT_JSON="$CIRCUIT_DIR/target/${CIRCUIT_NAME}.json"
 
 LOG=$(mktemp)
 trap 'rm -f "$LOG"' EXIT
-for lib in statement-signer oidc-domain-attestation; do
+for lib in statement-signer oidc-libs; do
   if (cd "$CIRCUITS/$lib" && nargo test > "$LOG" 2>&1); then
     echo "  $lib Noir tests: $(grep -E 'tests passed' "$LOG" | tail -1 | sed 's/^.*\] //')"
   else
