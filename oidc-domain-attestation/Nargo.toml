@@ -5,8 +5,5 @@ version = "0.1.0"
 authors = ["zkproofport"]
 
 [dependencies]
-jwt = { path = "../deps/noir-jwt" }
-keccak256 = { path = "../deps/keccak256" }
-base64 = { git = "https://github.com/noir-lang/noir_base64", tag = "v0.4.2" }
-string_search = { git = "https://github.com/noir-lang/noir_string_search", tag = "v0.3.3" }
+oidc_libs = { path = "../oidc-libs" }
 statement_signer = { path = "../statement-signer" }

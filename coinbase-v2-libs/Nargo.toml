@@ -1,0 +1,16 @@
+[package]
+name = "coinbase_v2_libs"
+type = "lib"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+# Everything coinbase_attestation v2 checks except WHO signed the revocation
+# statement: the wallet's signature over the request, Coinbase's attestAccount
+# transaction, the statement's bytes and the nullifier. Shared by the circuit
+# packages serving `coinbase_attestation` v2 -- coinbase-attestation-v2
+# (iPhone App Attest or the AI server) and coinbase-attestation-v2-android
+# (Android key attestation). Does not depend on ../statement-signer, so a
+# synthetic-anchors copy of a circuit replaces only the signer.
+[dependencies]
+keccak256 = { path = "../deps/keccak256" }
+coinbase_libs = { path = "../coinbase-libs" }

@@ -45,29 +45,13 @@
 // not this package's name: proofport-ai's computeWalletNullifier(address,
 // circuitId) derives the tag from the id.
 
-mod client_data;
-
-use keccak256::keccak256;
-use coinbase_libs::eip1559_tx_parser;
-use coinbase_libs::merkle;
 use coinbase_libs::nullifier::verify_wallet_nullifier;
-use coinbase_libs::signed_message::signed_digest;
-use coinbase_libs::ethereum::{COINBASE_ATTESTER_CONTRACT, derive_address_from_pubkey};
+use coinbase_v2_libs::{check_request_and_tx, CIRCUIT_TAG};
+use coinbase_v2_libs::client_data::{CLIENT_DATA_LEN, check_client_data};
 use statement_signer::{
     ASSERT_AUTH_DATA_MAX_LEN, ATT_AUTH_DATA_MAX_LEN, CREDENTIAL_TBS_MAX_LEN, SignerChain,
     verify_statement,
 };
-use client_data::{CLIENT_DATA_LEN, check_client_data};
-
-/// attestAccount(address) -- 0x56feed5e
-global ATTEST_ACCOUNT_SELECTOR: [u8; 4] = [0x56, 0xfe, 0xed, 0x5e];
-
-/// keccak256("coinbase_attestation"). See the header for why not this
-/// package's name.
-global CIRCUIT_TAG: [u8; 32] = [
-    0x16, 0x3f, 0xeb, 0x85, 0xbf, 0xfe, 0x62, 0x69, 0x88, 0x19, 0x7d, 0x1c, 0x5f, 0x0b, 0x70, 0xdc,
-    0x10, 0xf5, 0x93, 0xd7, 0x08, 0xab, 0x0e, 0xfb, 0xcd, 0xfa, 0x06, 0x81, 0x4d, 0x28, 0x6b, 0xe2,
-];
 
 fn main(
     // ============ Public Inputs (giwa_attestation's six, in its order) ============
@@ -116,58 +100,26 @@ fn main(
     assertion_auth_data_len: u32,
 ) {
     // ===================================================================
-    // PART 1: this wallet signed THIS request
+    // PARTS 1-2: this wallet signed THIS request; coinbase_attestation's
+    //            transaction checks, unchanged (../coinbase-v2-libs)
     // ===================================================================
-    let derived_user_address = derive_address_from_pubkey(user_pubkey_x, user_pubkey_y);
-    assert(derived_user_address == user_address, "User pubkey does not match address");
-
-    let message_hash = signed_digest(signal_hash, domain_separator, action_hash);
-    let valid_user_sig = std::ecdsa_secp256k1::verify_signature(
+    let message_hash = check_request_and_tx(
+        signal_hash,
+        domain_separator,
+        action_hash,
+        signer_list_merkle_root,
+        user_address,
+        user_signature,
         user_pubkey_x,
         user_pubkey_y,
-        user_signature,
-        message_hash,
-    );
-    assert(valid_user_sig, "Invalid user signature on the signed message");
-
-    // ===================================================================
-    // PART 2: coinbase_attestation's transaction checks, unchanged
-    // ===================================================================
-    let unsigned_tx_hash = eip1559_tx_parser::create_unsigned_tx_hash(raw_transaction, tx_length);
-    let tx_signature = eip1559_tx_parser::extract_signature_from_tx(raw_transaction);
-    let mut attester_signature: [u8; 64] = [0; 64];
-    for i in 0..64 {
-        attester_signature[i] = tx_signature[i];
-    }
-    let valid_attester_sig = std::ecdsa_secp256k1::verify_signature(
+        raw_transaction,
+        tx_length,
         coinbase_attester_pubkey_x,
         coinbase_attester_pubkey_y,
-        attester_signature,
-        unsigned_tx_hash,
-    );
-    assert(valid_attester_sig, "Invalid TX signature");
-
-    let derived_signer_address =
-        derive_address_from_pubkey(coinbase_attester_pubkey_x, coinbase_attester_pubkey_y);
-    let leaf_hash = keccak256(derived_signer_address, 20);
-    let calculated_root = merkle::verify_merkle_proof(
-        leaf_hash,
-        coinbase_signer_leaf_index,
         coinbase_signer_merkle_proof,
+        coinbase_signer_leaf_index,
         merkle_proof_depth,
     );
-    assert(calculated_root == signer_list_merkle_root, "Signer not in valid list");
-
-    let to_address = eip1559_tx_parser::extract_to_address(raw_transaction);
-    assert(to_address == COINBASE_ATTESTER_CONTRACT, "TX sent to wrong contract");
-    let calldata = eip1559_tx_parser::extract_calldata(raw_transaction);
-    let mut selector: [u8; 4] = [0; 4];
-    for i in 0..4 {
-        selector[i] = calldata[i];
-    }
-    assert(selector == ATTEST_ACCOUNT_SELECTOR, "Invalid function selector");
-    let calldata_address = eip1559_tx_parser::extract_address_from_calldata(calldata);
-    assert(calldata_address == user_address, "Calldata address does not match user_address");
 
     // ===================================================================
     // PART 3: a trusted signer said, at attested_at, that this wallet's

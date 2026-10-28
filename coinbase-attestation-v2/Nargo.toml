@@ -5,6 +5,6 @@ version = "0.1.0"
 authors = ["zkproofport"]
 
 [dependencies]
-keccak256 = { path = "../deps/keccak256" }
 coinbase_libs = { path = "../coinbase-libs" }
+coinbase_v2_libs = { path = "../coinbase-v2-libs" }
 statement_signer = { path = "../statement-signer" }
