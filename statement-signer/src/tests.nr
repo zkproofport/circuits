@@ -99,7 +99,8 @@ fn the_rsa_root_hash_is_the_pinned_limbs() {
 #[test]
 fn the_play_key_hash_is_the_pinned_key() {
     assert(
-        crate::play_key_hash(crate::play_key::PLAY_INTEGRITY_KEY) == crate::play_key::PLAY_INTEGRITY_KEY_HASH,
+        crate::play_key_hash(crate::play_key::PLAY_INTEGRITY_KEY)
+            == crate::play_key::PLAY_INTEGRITY_KEY_HASH,
     );
 }
 
@@ -109,11 +110,9 @@ fn the_play_key_hash_is_the_pinned_key() {
 // writes the printed hashes back. Asserts nothing.
 #[test]
 fn print_anchor_hashes() {
-    println(
-        crate::rsa_root_hash(
-            crate::android_root::GOOGLE_RSA_ROOT_MODULUS_LIMBS,
-            crate::android_root::GOOGLE_RSA_ROOT_REDC_LIMBS,
-        ),
-    );
+    println(crate::rsa_root_hash(
+        crate::android_root::GOOGLE_RSA_ROOT_MODULUS_LIMBS,
+        crate::android_root::GOOGLE_RSA_ROOT_REDC_LIMBS,
+    ));
     println(crate::play_key_hash(crate::play_key::PLAY_INTEGRITY_KEY));
 }

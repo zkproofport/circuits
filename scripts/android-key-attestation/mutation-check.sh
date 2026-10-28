@@ -11,18 +11,23 @@
 # Needs the synthetic-anchors copy and its fixtures:
 #   oidc-domain-attestation-android/scripts/post-build.sh (or its steps 2-3).
 # The mechanics are scripts/statement-signer/mutation-check.sh's.
+# Not here, each with its reason: the same-length package byte comparison
+# (no RKP fixture has a same-length foreign package; Noir test
+# one_changed_package_byte_is_refused covers it), and "Key belongs to more
+# than one package" (two_packages is also refused by the application id's
+# length check, so removing one guard leaves the other refusing -- defence
+# in depth, not a dead assert), and "Key description has no hardware root of
+# trust" (with no [704] the root-of-trust parse refuses too).
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CIRCUITS="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CASES=$(mktemp)
 trap 'rm -f "$CASES"' EXIT
 cat > "$CASES" <<'CASES'
-replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, sha256::digest(statement)),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, sha256::digest(statement)),~stmt_coinbase_replay
-replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, sha256::digest(statement)),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, sha256::digest(statement)),~stmt_other_key_vouched
-replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, sha256::digest(statement)),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, sha256::digest(statement)),~stmt_signed_by_other_key
+replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, d),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, d),~stmt_coinbase_replay
+replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, d),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, d),~stmt_other_key_vouched
+replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, d),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, d),~stmt_signed_by_other_key
 replace~    assert(ncl == P, "Key belongs to another app");~    assert(true, "Key belongs to another app");~other_package
-replace~    assert(bytes_at(buf, n + nhl, package), "Key belongs to another app");~    assert(true, "Key belongs to another app");~two_packages
-replace~    assert(i + ihl + icl == p_end, "Key belongs to more than one package");~    assert(true, "Key belongs to more than one package");~two_packages
 replace~        bytes_at(buf, p_end + dhl + 2, signing_digest),~        true,~debug_signing_certificate
 replace~        bytes_at(buf, p_end + dhl, [0x04, 0x20]) & (dcl == 34),~        true,~two_signing_certificates
 replace~    assert(buf[b + 2] != 0, "Device bootloader is unlocked");~    assert(true, "Device bootloader is unlocked");~bootloader_unlocked
@@ -31,7 +36,6 @@ replace~    assert(buf[b + 5] == 0, "Device boot state is not Verified");~    as
 replace~        (level == SECURITY_LEVEL_TEE) | (level == SECURITY_LEVEL_STRONGBOX),~        true,~software_key
 replace~    assert(buf[p + 2] == level, "KeyMint and attestation security levels differ");~    assert(true, "KeyMint and attestation security levels differ");~software_keymint_under_tee
 replace~        (origin_count == 1) & bytes_at(buf, origin_at, [0x02, 0x01, 0x00]),~        true,~imported_key
-replace~    assert(rot_count == 1, "Key description has no hardware root of trust");~    assert(true, "Key description has no hardware root of trust");~no_root_of_trust
 replace~    assert(app_count == 1, "Key description names no single application");~    assert(true, "Key description names no single application");~app_id_twice
 replace~    assert(now <= t.not_after, "Certificate has expired at now");~    assert(true, "Certificate has expired at now");~att_expired
 replace~    assert(now <= t.not_after, "Certificate has expired at now");~    assert(true, "Certificate has expired at now");~ca3_expired

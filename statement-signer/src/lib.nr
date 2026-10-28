@@ -207,13 +207,9 @@ pub fn verify_statement_android<let N: u32>(
         ANDROID_SIGNING_DIGEST,
         now,
     );
+    let d = sha256::digest(statement);
     assert(
-        std::ecdsa_secp256r1::verify_signature(
-            key_x,
-            key_y,
-            statement_sig,
-            sha256::digest(statement),
-        ),
+        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, d),
         "Statement signature is invalid",
     );
 }
@@ -259,7 +255,10 @@ pub fn verify_statement_android_factory<let N: u32>(
     // builder fails on noir-bignum's constant arithmetic (bb gates/write_vk:
     // "remainder_1024.lo == 0", 2026-10-28), and comparing limb by limb lets
     // the compiler fold them back into constants.
-    assert(rsa_root_hash(root_modulus, root_redc) == GOOGLE_RSA_ROOT_HASH, "RSA root is not Google's");
+    assert(
+        rsa_root_hash(root_modulus, root_redc) == GOOGLE_RSA_ROOT_HASH,
+        "RSA root is not Google's",
+    );
     let (key_x, key_y) = android_factory_signing_key(
         chain,
         root_modulus,
@@ -275,7 +274,10 @@ pub fn verify_statement_android_factory<let N: u32>(
     // A prover input pinned by its hash, like the RSA root: Barretenberg's
     // builder fails on an ECDSA check whose public key is a circuit constant
     // (measured 2026-10-28, same "remainder_1024" assertion).
-    assert(play_key_hash(play_key) == PLAY_INTEGRITY_KEY_HASH, "Play Integrity key is not our app's");
+    assert(
+        play_key_hash(play_key) == PLAY_INTEGRITY_KEY_HASH,
+        "Play Integrity key is not our app's",
+    );
     let mut play_x: [u8; 32] = [0; 32];
     let mut play_y: [u8; 32] = [0; 32];
     for i in 0..32 {
