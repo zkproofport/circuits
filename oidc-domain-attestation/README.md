@@ -148,12 +148,20 @@ dyadic size: 1536 and 2048 both land in 2^19.
 |---|---|---|
 | v1 (768) | 235,719 | 2^18 (`.srs` 16,777,428 bytes) |
 | v2 (2048) | 352,006 (350,659 before the quote check) | 2^19 (`.srs` 33,554,644 bytes) |
+| v2 + provider-key statement (2026-10-28) | 927,513 (231,346 ACIR opcodes) | 2^20 (`.srs` 67,109,076 bytes), 121,063 gates (11.5%) of headroom |
 
 Measured parts at the 1536 cap: signature + SHA 180,332; payload decode
 +31,698; seven claim lookups, the `aud` keccak and the issuer / nonce checks
 +~80k. Each payload byte costs ~120 gates; a 1216 cap would fit 2^18
 (254,614) but not a Microsoft token with a 200-character `aio`.
 Proof 9,920 bytes; verifier 2,461 lines; vk 1,888 bytes.
+
+With the provider-key statement: proof 10,304 bytes, vk 1,888 bytes, verifier
+2,461 lines. `bb prove -t evm` on an M5 Pro (load ~6-7), three runs each, same
+`google_bound` token: before 1.50-1.55 s / 1.07 GiB peak, after 3.07-3.13 s /
+2.44 GiB peak. The App Attest checks run for the server kind too (constraints
+inside `if signer_kind == app` cost the same either way), so both kinds pay
+the 2^20 size. No phone measured.
 
 ## Known limits
 
@@ -182,18 +190,28 @@ Proof 9,920 bytes; verifier 2,461 lines; vk 1,888 bytes.
 ```
 scripts/build.sh oidc-domain-attestation            # build + scripts/post-build.sh
 oidc-domain-attestation/scripts/mutation-check.sh   # which code refuses each case
-(cd oidc-domain-attestation && nargo test)          # claims checks fed a dishonest value
+(cd oidc-domain-attestation && nargo test)          # claims and provider_key checks
+oidc-domain-attestation/scripts/real-kms-proof.sh   # a real token + the real KMS key, real circuit
 ```
 
-`post-build.sh` regenerates fixtures (`scripts/make-fixtures.ts`: a fresh
-RSA-2048 key, tokens shaped like Google's and Microsoft's, both nonce modes),
-runs 12 accepted cases (four through `bb prove` / `bb verify` with the 214
-public inputs compared to the reference layout) and 31 refusals, each refused
-for a named reason.
+`post-build.sh` runs the statement-signer and this circuit's Noir tests,
+builds the synthetic-anchors copy, regenerates fixtures
+(`scripts/make-fixtures.ts`: a fresh RSA-2048 key, tokens shaped like Google's
+and Microsoft's, both nonce modes, statements signed by the synthetic App
+Attest chain or the test server key) and runs them there: 14 accepted (five
+through `bb prove` / `bb verify` with the 214 public inputs compared to the
+reference layout), 58 refused each for a named reason, the app-kind and
+server-kind proofs of one token compared for identical public inputs, and
+three cases on this circuit's real anchors (Apple's real CA 1 chain stops at
+the App ID; the synthetic chain and the test-key statement are refused).
+2026-10-28: 76 passed, 0 failed.
 
 `mutation-check.sh` deletes or neutralises one assert at a time and requires
-the matching refusal fixture to be ACCEPTED by the mutant. On 2026-10-27 all 21
-mutations were caught (each mutant accepted its fixture). Guards not in it
+the matching refusal fixture to be ACCEPTED by the mutant (engine:
+`scripts/statement-signer/mutation-check.sh`, which also mutates the shared
+signer library and the App Attest library). On 2026-10-28 all 33 mutations
+were caught (32 in one run; `email_not_verified` rerun alone after its case
+text was unescaped). Guards not in it
 cannot be isolated by an honest witness, because another check refuses the
 same input first: `base64_decode_offset is outside partial_data` (offset 0
 underflows), `payload start is not in the first block` (the shifted read goes
