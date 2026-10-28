@@ -25,6 +25,9 @@ unset NODE_OPTIONS
 CIRCUITS=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 REPO=$(git -C "$CIRCUITS" rev-parse --show-superproject-working-tree)
 SIGNER="${1:-}"
+shift || true
+# Anything after the signer goes to the generator (factory only):
+#   --device-statement <dir> | --device-capture <dir>   (see generate-prover-toml.js)
 case "$SIGNER" in
   rkp) PKG_DIR=coinbase-attestation-v2-android ;;
   factory) PKG_DIR=coinbase-attestation-v2-android-factory ;;
@@ -57,6 +60,6 @@ export ATTESTED_WALLET_KEY
 rm -rf "$REAL/test-vectors"
 env -u NODE_OPTIONS node "$HERE/generate-prover-toml.js" \
   --coinbase "$COINBASE_TOML" \
-  --signer "$SIGNER" \
+  --signer "$SIGNER" "$@" \
   --synthetic-dir "$SYN" \
   --real-dir "$REAL"

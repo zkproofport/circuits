@@ -152,9 +152,11 @@ function main() {
     let sig;
     if (o.chainInputs) {
       chain = { ...o.chainInputs };
-      sig = Buffer.alloc(64);
-      sig[31] = 1;
-      sig[63] = 1;
+      sig = o.statementSig ?? Buffer.alloc(64);
+      if (!o.statementSig) {
+        sig[31] = 1;
+        sig[63] = 1;
+      }
     } else {
       const dev = SIGNER === 'rkp'
         ? A.androidDevice({ now: o.chainTime ?? at, ...(o.dev || {}) })
@@ -180,7 +182,7 @@ leaf_tbs_len = ${chain.leaf_tbs_len}
 leaf_sig = ${arr(chain.leaf_sig)}`;
     } else {
       const nonce = o.verdictNonce ?? A.playIntegrityNonce(o.signed ?? cd, sig);
-      const t = A.playToken(nonce, o.verdictKey ?? testPlay, o.verdict || {});
+      const t = o.integrity ?? A.playToken(nonce, o.verdictKey ?? testPlay, o.verdict || {});
       const rsa = o.rsa ?? syntheticRsa;
       const playKey = o.playKey ?? Buffer.concat([testPlay.x, testPlay.y]);
       signerToml = `ik_tbs = ${arr(chain.ik_tbs)}
@@ -240,6 +242,26 @@ ${signerToml}
   };
   const syn = writer(SYN_DIR);
   const ACT = requests.action;
+
+  // ---- a REAL phone (factory signer only) ----------------------------------
+  // --device-statement <dir>: write the statement for the phone to sign
+  //   (statement.bin, attested_at.txt), then stop. The phone signs it with
+  //   proofport-app scripts/capture-android-attestation.sh <serial> <dir>/statement.bin <dir>.
+  // --device-capture <dir>: with the capture there, write real_device.toml
+  //   (Play-installed build: must be accepted and proved) or
+  //   real_device_debug_build.toml (refused at the signing certificate) into
+  //   the REAL circuit's test-vectors, besides the other cases.
+  const argv = process.argv.slice(2);
+  const flag = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+  const deviceStatementDir = flag('--device-statement');
+  if (deviceStatementDir) {
+    if (SIGNER !== 'factory') throw new Error('--device-statement is for --signer factory');
+    fs.mkdirSync(deviceStatementDir, { recursive: true });
+    fs.writeFileSync(path.join(deviceStatementDir, 'statement.bin'), clientData(ACT));
+    fs.writeFileSync(path.join(deviceStatementDir, 'attested_at.txt'), String(attestedAt));
+    console.log(`device statement for attested_at=${attestedAt} written to ${deviceStatementDir}`);
+    return;
+  }
   syn('Prover.toml', toml(ACT));
   syn('Prover.no-action.toml', toml(requests.noAction));
 
@@ -307,6 +329,35 @@ ${signerToml}
     real(path.join('test-vectors', 'real_google_factory_chain_other_app.toml'), toml(ACT, {
       label: 'real_google_factory_chain_other_app: Google-signed Sony chain, the Play Store\'s key',
       chainInputs: chainJs.factoryChainInputs(chainJs.pemChain(pem), chainJs.GOOGLE_RSA_ROOT_MODULUS_HEX),
+      rsa: realRsa,
+      playKey: anchors.readPlayKey(),
+    }));
+  }
+  const deviceCapture = flag('--device-capture');
+  if (deviceCapture) {
+    if (SIGNER !== 'factory') throw new Error('--device-capture is for --signer factory');
+    const att = JSON.parse(fs.readFileSync(path.join(deviceCapture, 'attest.json'), 'utf8'));
+    const verdict = JSON.parse(fs.readFileSync(path.join(deviceCapture, 'verdict.json'), 'utf8'));
+    const cd = fs.readFileSync(path.join(deviceCapture, 'statement.bin'));
+    const at = Number(fs.readFileSync(path.join(deviceCapture, 'attested_at.txt'), 'utf8').trim());
+    if (Buffer.from(verdict.protectedHeader, 'ascii').toString() !== 'eyJhbGciOiJFUzI1NiJ9') throw new Error('the verdict header is not {"alg":"ES256"}');
+    const raw = Buffer.from(verdict.signature, 'base64url');
+    let vs = BigInt('0x' + raw.subarray(32).toString('hex'));
+    if (vs > N_P256 / 2n) vs = N_P256 - vs;
+    const payload = Buffer.from(verdict.payload, 'ascii');
+    const recognized = verdict.verdict?.appIntegrity?.appRecognitionVerdict === 'PLAY_RECOGNIZED';
+    const name = recognized ? 'real_device' : 'real_device_debug_build';
+    real(path.join('test-vectors', `${name}.toml`), toml(ACT, {
+      label: `${name}: REAL phone, ${att.chain.length} certificates, verdict ${verdict.verdict?.appIntegrity?.appRecognitionVerdict}`,
+      clientData: cd,
+      attestedAt: at,
+      chainInputs: chainJs.factoryChainInputs(att.chain.map(c => Buffer.from(c, 'base64')), chainJs.GOOGLE_RSA_ROOT_MODULUS_HEX),
+      statementSig: chainJs.rawLowS(Buffer.from(att.signature, 'base64'), 32, N_P256),
+      integrity: {
+        payload_b64: Buffer.concat([payload, Buffer.alloc(1368 - payload.length)]),
+        payload_b64_len: payload.length,
+        signature: Buffer.concat([raw.subarray(0, 32), Buffer.from(vs.toString(16).padStart(64, '0'), 'hex')]),
+      },
       rsa: realRsa,
       playKey: anchors.readPlayKey(),
     }));

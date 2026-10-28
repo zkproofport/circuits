@@ -46,6 +46,9 @@ real_refuse() {
 }
 real_refuse real_synthetic_root          "RSA root is not Google's"
 real_refuse real_google_factory_chain_other_app  "Key belongs to another app"
+if [ -f test-vectors/real_device_debug_build.toml ]; then
+  real_refuse real_device_debug_build "App is signed with another certificate"
+fi
 if [ -f test-vectors/real_device.toml ]; then
   if nargo execute witness_real_device --prover-name test-vectors/real_device > test-vectors/real_device.log 2>&1; then
     echo "  ok       real_device"
