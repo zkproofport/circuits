@@ -1,0 +1,7 @@
+{
+  "address": "0x8e89f11e65f219203f5be9d6a69a4da084630c56",
+  "network": "base",
+  "chainId": 8453,
+  "contract": "HonkVerifier",
+  "library": "0xaf8ef8a7ab3a0a8c99414ae1862ffe54fd828223"
+}
