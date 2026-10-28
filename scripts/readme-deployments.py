@@ -57,6 +57,9 @@ EXCLUDED_SCRIPTS = {
     'NullifierRegistry': 'deprecated nullifier registry, not a verifier',
     'ZKProofPortNullifierRegistry': 'deprecated nullifier registry, not a verifier',
     'CoinbaseAppAttestPoc': 'prototype superseded by coinbase_attestation v2 (2026-10-23), not shipped',
+    # deploy_verifier.sh deploys the library through script/DeployTranscriptLib.s.sol
+    # since 2026-10-23; its address is recorded in deployments/<chain>/ZKTranscriptLib.json.
+    'TranscriptLib': 'ZKTranscriptLib library linked by every verifier, not a verifier',
 }
 
 BEGIN = '## Reference deployments\n'

@@ -277,7 +277,10 @@ case $COMMAND in
         case $NETWORK in
             base|mainnet)
                 if ! node "$SCRIPT_DIR/statement-signer/set-server-key.js" --require-real; then
-                    echo -e "${RED}Error: statement-signer pins the test server key; not deploying coinbase-attestation-v2 to $NETWORK${NC}"
+                    # Not necessarily the test key: node itself failing (a
+                    # NODE_OPTIONS preload that is missing, 2026-10-28) lands
+                    # here too. The lines above say which.
+                    echo -e "${RED}Error: the statement-signer server-key check failed (see the output above: the test key is pinned, or node could not run); not deploying coinbase-attestation-v2 to $NETWORK${NC}"
                     exit 1
                 fi
                 ;;
