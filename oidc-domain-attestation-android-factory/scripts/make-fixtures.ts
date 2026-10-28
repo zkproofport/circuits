@@ -201,5 +201,52 @@ write("real_synthetic_root", { out: REAL_OUT, playKey: anchors.readPlayKey() });
   });
 }
 
+// ---------------- a REAL phone (optional) ----------------
+// ANDROID_DEVICE_CAPTURE=<dir> from make-device-statement.ts and
+// proofport-app/scripts/capture-android-attestation.sh: the phone's real
+// chain, its key's signature over the statement and Google's real Play
+// Integrity verdict, proved against the REAL circuit (Google's RSA root and
+// our Play key). A DEBUG build signs with the debug certificate, so the real
+// circuit must refuse it at the signing certificate (real_device_debug_build);
+// a Play-installed build is the accepted case (real_device).
+const capture = process.env.ANDROID_DEVICE_CAPTURE;
+if (capture) {
+  const att = JSON.parse(fs.readFileSync(path.join(capture, "attest.json"), "utf8"));
+  const verdict = JSON.parse(fs.readFileSync(path.join(capture, "verdict.json"), "utf8"));
+  const deviceKey = crypto.createPrivateKey(fs.readFileSync(path.join(capture, "jwt-key.pem"), "utf8"));
+  const now = BigInt(fs.readFileSync(path.join(capture, "now.txt"), "utf8").trim());
+  const deviceN = (crypto.createPublicKey(deviceKey).export({ format: "jwk" }) as { n: string }).n;
+  const iat = Number(now) - 60;
+  const jwt = signJwt(google(NONCE, iat), deviceKey, "0123456789abcdef0123456789abcdef01234567");
+  const opts: Opts = { ...G, now };
+  const token = buildTokenInputs(jwt, deviceN, opts);
+  const ders = (att.chain as string[]).map((c) => Buffer.from(c, "base64"));
+  const chain = chainJs.factoryChainInputs(ders, chainJs.GOOGLE_RSA_ROOT_MODULUS_HEX);
+  const sigDer = Buffer.from(att.signature, "base64");
+  const statementSig = chainJs.rawLowS(sigDer, 32, chainJs.N_P256);
+  const payload = Buffer.from(verdict.payload, "ascii");
+  if (Buffer.from(verdict.protectedHeader, "ascii").toString() !== "eyJhbGciOiJFUzI1NiJ9") throw new Error("the verdict's header is not {\"alg\":\"ES256\"}");
+  const raw = Buffer.from(verdict.signature, "base64url");
+  let s = BigInt("0x" + raw.subarray(32).toString("hex"));
+  const n256 = chainJs.N_P256 as bigint;
+  if (s > n256 / 2n) s = n256 - s;
+  const integritySig = Buffer.concat([raw.subarray(0, 32), Buffer.from(s.toString(16).padStart(64, "0"), "hex")]);
+  const a = {
+    statement_sig: statementSig,
+    ik_tbs: chain.ik_tbs, ik_tbs_len: chain.ik_tbs_len, ik_sig: chain.ik_sig,
+    batch_tbs: chain.batch_tbs, batch_tbs_len: chain.batch_tbs_len, batch_sig: chain.batch_sig,
+    leaf_tbs: chain.leaf_tbs, leaf_tbs_len: chain.leaf_tbs_len, leaf_sig: chain.leaf_sig,
+    integrity_payload_b64: Buffer.concat([payload, Buffer.alloc(1368 - payload.length)]),
+    integrity_payload_b64_len: payload.length,
+    integrity_signature: integritySig,
+    rsa_root_modulus: realRsa.modulus, rsa_root_redc: realRsa.redc, play_integrity_key: anchors.readPlayKey(),
+  };
+  const recognized = verdict.verdict?.appIntegrity?.appRecognitionVerdict === "PLAY_RECOGNIZED";
+  const name = recognized ? "real_device" : "real_device_debug_build";
+  fs.writeFileSync(path.join(REAL_OUT, `${name}.toml`), toProverTomlAndroidFactory(token, a as never));
+  fs.writeFileSync(path.join(REAL_OUT, `${name}.public_inputs.hex`), publicInputs(token).map((v) => v.toString(16).padStart(64, "0")).join(""));
+  written.push(`${name} (REAL phone: ${ders.length} certificates, verdict ${verdict.verdict?.appIntegrity?.appRecognitionVerdict}, ${JSON.stringify(verdict.verdict?.deviceIntegrity?.deviceRecognitionVerdict)})`);
+}
+
 fs.writeFileSync(path.join(OUT, "make-fixtures.log"), written.join("\n") + "\n");
 console.log(`wrote ${written.length} cases`);

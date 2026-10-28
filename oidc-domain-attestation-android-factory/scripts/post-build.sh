@@ -164,10 +164,14 @@ echo ""
 echo "Real circuit (Google's RSA root and our Play key as committed):"
 cd "$REAL_DIR"
 VECTORS="$REAL_VECTORS"
+CIRCUIT_JSON="$REAL_DIR/target/${CIRCUIT_NAME}.json"
 refuse real_synthetic_root                 "RSA root is not Google's"
 refuse real_google_factory_chain_other_app "Key belongs to another app"
 if [ -f "$REAL_VECTORS/real_device.toml" ]; then
-  accept real_device
+  accept real_device PROVE
+fi
+if [ -f "$REAL_VECTORS/real_device_debug_build.toml" ]; then
+  refuse real_device_debug_build         "App is signed with another certificate"
 fi
 
 echo ""
