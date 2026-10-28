@@ -17,6 +17,10 @@
 # Needs the circuit compiled (scripts/build.sh) and the fixtures
 # (make-fixtures.sh writes them into coinbase-attestation-v2/test-vectors/).
 set -u
+# A NODE_OPTIONS that preloads a file which no longer exists (a terminal
+# wrapper's temporary preload, 2026-10-28) makes every `node` here crash
+# before running; these scripts need none.
+unset NODE_OPTIONS
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CIRCUITS="$(cd "$SCRIPT_DIR/../.." && pwd)"

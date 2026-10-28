@@ -21,6 +21,10 @@
 # next to it). It goes to the generator through the environment and is never
 # printed.
 set -eu
+# A NODE_OPTIONS that preloads a file which no longer exists (a terminal
+# wrapper's temporary preload, 2026-10-28) makes every `node` here crash
+# before running; these scripts need none.
+unset NODE_OPTIONS
 
 # The circuits repository's own root, wherever it is checked out; the parent
 # (for proofport-ai) only when circuits sits in it as a submodule.
@@ -54,7 +58,7 @@ fi
 export ATTESTED_WALLET_KEY
 
 rm -rf "$REAL/test-vectors"
-node "$HERE/generate-prover-toml.js" \
+env -u NODE_OPTIONS node "$HERE/generate-prover-toml.js" \
   --coinbase "$COINBASE_TOML" \
   --synthetic-dir "$SYN" \
   --real-dir "$REAL"
