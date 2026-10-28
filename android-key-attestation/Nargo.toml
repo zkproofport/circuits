@@ -1,0 +1,14 @@
+[package]
+name = "android_key_attestation"
+type = "lib"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+# Android key attestation (Keystore / KeyMint), verified in a circuit: "a key
+# generated in secure hardware, by THIS app as Play signs it, on a device with
+# a locked bootloader and verified boot". The certificate parts reuse
+# app-attest-libs (bounded DER, the P-384 check over SHA-384). P-256 is
+# Barretenberg's black box.
+[dependencies]
+app_attest = { path = "../app-attest-libs" }
+sha256 = { tag = "v0.3.0", git = "https://github.com/noir-lang/sha256" }
