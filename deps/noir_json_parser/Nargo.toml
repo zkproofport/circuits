@@ -1,0 +1,16 @@
+# Vendored from zkpassport/noir_json_parser v0.4.0-4 (Apache-2.0; the tag
+# zkPassport's Android FaceMatch circuit pins) for nargo 1.0.0-beta.19:
+#   - poseidon v0.3.0 -> v0.1.1 (v0.3.0's poseidon2_permutation call does not
+#     match beta.19's std; deps/noir-bignum already uses v0.1.1);
+#   - _string_tools/slice_packed_field.nr get_last_limb_path: to_le_bits
+#     returns [u1; N] on beta.19, converted to [bool; N].
+# Nothing else differs from the tag.
+[package]
+name = "json_parser"
+type = "lib"
+authors = [""]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+noir_sort = { tag = "v0.4.0", git = "https://github.com/noir-lang/noir_sort" }
+poseidon = { git = "https://github.com/noir-lang/poseidon", tag = "v0.1.1" }

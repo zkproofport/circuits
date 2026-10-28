@@ -1,0 +1,15 @@
+[package]
+name = "play_integrity"
+type = "lib"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+# A Google Play Integrity verdict (classic request), verified in a circuit as
+# zkPassport's Android FaceMatch circuit does (zkpassport/circuits
+# src/noir/lib/facematch/src/android/token.nr): Google's ES256 signature over
+# the decrypted JWS, then the verdict fields read with zkPassport's JSON
+# parser (the same tag zkPassport pins).
+[dependencies]
+json_parser = { path = "../deps/noir_json_parser" }
+base64 = { git = "https://github.com/noir-lang/noir_base64", tag = "v0.4.2" }
+sha256 = { tag = "v0.3.0", git = "https://github.com/noir-lang/sha256" }

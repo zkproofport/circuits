@@ -1,0 +1,8 @@
+[package]
+name = "play_integrity_only"
+type = "bin"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+[dependencies]
+play_integrity = { path = "../../../play-integrity" }
