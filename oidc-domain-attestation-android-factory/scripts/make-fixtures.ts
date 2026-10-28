@@ -93,6 +93,8 @@ interface Case {
   playKey?: Buffer;
   chainInputs?: Record<string, unknown>;
   change?: (a: Record<string, unknown>) => void;
+  /** Use Google's signature over ANOTHER verdict (these field overrides) for this payload. */
+  signatureFrom?: Record<string, unknown>;
   tweak?: (i: TokenInputs) => void;
   payload?: string;
   opts?: Opts;
@@ -129,6 +131,7 @@ function write(name: string, c: Case = {}) {
     integrity_payload_b64: t.payload_b64, integrity_payload_b64_len: t.payload_b64_len, integrity_signature: t.signature,
     rsa_root_modulus: rsa.modulus, rsa_root_redc: rsa.redc, play_integrity_key: c.playKey ?? testPlayXY,
   };
+  if (c.signatureFrom) a.integrity_signature = A.playToken(nonce, c.verdictKey ?? testPlay, c.signatureFrom).signature;
   c.change?.(a);
   const out = c.out ?? OUT;
   fs.writeFileSync(path.join(out, `${name}.toml`), toProverTomlAndroidFactory(token, a as never));
@@ -175,12 +178,10 @@ write("verdict_requested_by_other_app", { verdict: { requestPackage: "com.exampl
 write("verdict_for_other_app", { verdict: { package: "com.example.other" } });
 write("verdict_for_other_statement", { verdictNonce: crypto.randomBytes(32) });
 write("verdict_signed_by_other_key", { verdictKey: A.ecKey("prime256v1") });
-write("verdict_tampered", {
-  change: (a) => {
-    const p = a.integrity_payload_b64 as Buffer;
-    p[40] = p[40] === 0x41 ? 0x42 : 0x41;
-  },
-});
+// The honest payload with the signature Google made over a BASIC-only verdict
+// for the same statement: well-formed, every field passes, only the signature
+// check can refuse it.
+write("verdict_tampered", { signatureFrom: { verdicts: ["MEETS_BASIC_INTEGRITY"] } });
 
 // ---------------- refused: the token (a sample) ----------------
 write("token_expired", { opts: { ...G, now: BigInt(EXP) } });
