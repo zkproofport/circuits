@@ -60,7 +60,7 @@ replace~                (nonce.storage()[2 * i] == hex_digit(b >> 4))~          
 replace~                (nonce.storage()[2 * i] == hex_digit(b >> 4))~                true | (nonce.storage()[2 * i] == hex_digit(b >> 4))~duplicate_nonce_first_wrong
 delete~nonce_binding must be zero when nonce_mode is 0~nonzero_binding_mode0
 # Email verification (unchanged semantics, now through claims.nr)
-replace~            claims::bool_claim(payload, \"email_verified\".as_bytes()),~            true,~email_not_verified
+replace~            claims::bool_claim(payload, "email_verified".as_bytes()),~            true,~email_not_verified
 delete~xms_edov is not true~xms_edov_false
 # The provider-key statement (src/provider_key.nr): each field the circuit
 # writes is what refuses a statement signed with another value there.
