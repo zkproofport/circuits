@@ -65,6 +65,21 @@ sha256_of() {
   fi
 }
 
+# The digest of a reference string published in parts, from the parts in
+# order (part0, part1, ...). A checkout holds only the parts; the joined file
+# exists only right after a build. Without this, --check on any fresh clone
+# reported every parted circuit STALE (2026-10-29) because the manifest's
+# whole-file line had no file to hash.
+joined_parts_sha256() {
+  local base="$1" i=0 parts=()
+  while [[ -f "$base.part$i" ]]; do parts+=("$base.part$i"); i=$((i + 1)); done
+  if command -v sha256sum >/dev/null 2>&1; then
+    cat "${parts[@]}" | sha256sum | cut -d' ' -f1
+  else
+    cat "${parts[@]}" | shasum -a 256 | cut -d' ' -f1
+  fi
+}
+
 status=0
 wrote=0
 missing=0
@@ -95,10 +110,16 @@ emit() {
   local dir="$1"; shift
   local names=("$@")
 
-  local body=''
+  local body='' digest
   for name in "${names[@]}"; do
-    [[ -f "$dir/$name" ]] || continue
-    body+="$(sha256_of "$dir/$name")  $name"$'\n'
+    if [[ -f "$dir/$name" ]]; then
+      digest="$(sha256_of "$dir/$name")"
+    elif [[ "$name" == *.srs && -f "$dir/$name.part0" ]]; then
+      digest="$(joined_parts_sha256 "$dir/$name")"
+    else
+      continue
+    fi
+    body+="$digest  $name"$'\n'
   done
 
   # A directory with none of the downloaded files has nothing to vouch for.
@@ -136,12 +157,22 @@ for target in */target */*/target; do
   # Retired proof-of-concept circuits are not published and not downloaded by
   # anything, so digesting them would only create manifests that go stale.
   [[ "$target" == _archived-poc/* ]] && continue
+  # Ignored build trees (the *-synthetic-anchors packages the acceptance runs
+  # build for test vectors) are never committed or downloaded.
+  git check-ignore -q "$target" 2>/dev/null && continue
 
   names=()
   for pattern in "${DOWNLOADED_IN_TARGET[@]}"; do
     for f in "$target"/$pattern; do
       [[ -f "$f" ]] && names+=("$(basename "$f")")
     done
+    # The joined reference string is digested even when only its parts are
+    # on disk (see joined_parts_sha256), in the '*.srs' slot it is listed in.
+    if [[ "$pattern" == '*.srs' ]]; then
+      for f in "$target"/*.srs.part0; do
+        [[ -f "$f" && ! -f "${f%.part0}" ]] && names+=("$(basename "${f%.part0}")")
+      done
+    fi
   done
   # A SHIPPED circuit that compiled but has no reference string or no verifying
   # key is not deployable, and a manifest written over that gap publishes
@@ -159,7 +190,7 @@ for target in */target */*/target; do
     for f in "$target"/*.json; do
       [[ -f "$f" ]] && stem="$(basename "$f" .json)" && break
     done
-    if [[ ! -f "$target/$stem.srs" ]]; then
+    if [[ ! -f "$target/$stem.srs" && ! -f "$target/$stem.srs.part0" ]]; then
       echo "MISSING ARTEFACT  $target/$stem.srs" >&2
       echo "  Generate it:  ./scripts/generate_srs.sh $(dirname "$target")" >&2
       status=1
