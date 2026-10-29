@@ -51,9 +51,6 @@ CIRCUITS = [
     ('CoinbaseAttestationV2Android', 'Coinbase KYC v2 (Android)'),
     ('OidcDomainAttestationAndroidFactory', 'OIDC Domain (Android, factory keys)'),
     ('CoinbaseAttestationV2AndroidFactory', 'Coinbase KYC v2 (Android, factory keys)'),
-    ('MdlKrOwnership', 'Mobile ID ownership'),
-    ('MdlKrAge', 'Mobile ID age'),
-    ('MdlKrRegion', 'Mobile ID region'),
     ('GiwaAttestation', 'GIWA attestation'),
     ('DojangPlayground', 'Dojang Playground'),
 ]

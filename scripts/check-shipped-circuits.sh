@@ -49,8 +49,8 @@ node -e '
     .map((p) => p.replace(/\/target\/vk\/vk$/, ""));
 
   // A word boundary, not a guessed delimiter. Matching `dir + " "` reported
-  // mdl/kr-region missing because it is the LAST item in the loop and is
-  // followed by ";" -- the check would have failed CI on a correct workflow.
+  // the LAST item in the loop missing because it is followed by ";" -- the
+  // check would have failed CI on a correct workflow.
   const listed = (dir) => {
     const escaped = dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return new RegExp("(^|\\s)" + escaped + "(\\s|;|\\\\|$)", "m").test(workflow);

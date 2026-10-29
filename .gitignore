@@ -37,11 +37,6 @@ cache/
 # Foundry dependencies (restore with: forge install)
 lib/
 
-# mDL test fixtures (contain personal info — do NOT commit)
-mdl/kr-ownership/test-vectors/
-mdl/kr-age/test-vectors/
-mdl/kr-region/test-vectors/
-
 # Acceptance fixtures and per-case logs, derived from the committed-nowhere
 # Prover fixtures on every run. Any circuit, not a list that goes stale: arc
 # grew a test-vectors/ the day after giwa did and the list had not moved.

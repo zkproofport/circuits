@@ -42,13 +42,13 @@ echo ""
 # THE bb VERSION IS CHECKED, NOT JUST PRINTED.
 #
 # This line used to only echo the version, and on 2026-09-03 at 01:21 — the same
-# minute bb 1.2.0 was installed on a machine — proofs for all three Korea Mobile
-# ID circuits were generated with it and committed. Nothing complained. The
+# minute bb 1.2.0 was installed on a machine — proofs for three circuits were
+# generated with it and committed. Nothing complained. The
 # mistake surfaced only on 2026-09-04, when the pinned bb refused those proofs
 # with "Conversion error here usually implies some bad proof serde or parsing".
 #
 # WHY NOTHING CAUGHT IT. The two versions produce the SAME verification key —
-# measured, byte for byte, on mdl/kr-age. So the key cannot tell you which bb
+# measured, byte for byte, on one of those circuits. So the key cannot tell you which bb
 # made a proof. The only visible difference is the proof itself: 16256 bytes
 # from the pinned build, 16224 from 1.2.0, for the identical circuit and
 # witness. A 32-byte difference in an opaque blob is not something anyone spots.
@@ -95,7 +95,7 @@ rm -f ./target/*.json ./target/*.sol
 # removes a path that a container wrote into, the next container still resolves
 # the old, now-deleted inode for it and dies with
 #   Failed to open data file for writing: ./target/vk/vk (No such file or directory)
-# Measured on kr-age, 6 consecutive builds each: `rm -rf ./target/vk` + let bb
+# Measured on one circuit, 6 consecutive builds each: `rm -rf ./target/vk` + let bb
 # create it = 2 of 3 builds fail; `rm -rf` + host mkdir = 1 of 2 fail. Keeping the
 # directory fixed vk and moved the identical failure onto ./target/proof, the
 # other directory that was being `rm -rf`'d — so neither is removed now. Keeping
@@ -246,9 +246,9 @@ if [ -f "./target/${CIRCUIT_NAME}.srs" ]; then
     echo "SRS already present: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
 else
     SRS_TOOL="${SCRIPT_DIR}/generate_srs.sh"
-    # The generator takes the path under circuits/ (mdl/kr-age), not the bare
-    # folder name: given "kr-age" it looks for circuits/kr-age and fails. That
-    # stayed hidden while every circuit already had a .srs to reuse.
+    # The generator takes the path under circuits/ (a/b for a nested circuit),
+    # not the bare folder name: given "b" it looks for circuits/b and fails.
+    # That stayed hidden while every circuit already had a .srs to reuse.
     CIRCUIT_REL_DIR="${CIRCUIT_DIR#"${CIRCUITS_DIR}"/}"
     if ! "$SRS_TOOL" "$CIRCUIT_REL_DIR"; then
         echo "Error: SRS generation failed for ${CIRCUIT_DIR_NAME}." >&2

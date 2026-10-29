@@ -1,7 +1,7 @@
 #!/bin/bash
 # Write a circuit's SRS (structured reference string) into its target/.
 #
-#   ./scripts/generate_srs.sh <circuit-dir>      e.g. coinbase-attestation, mdl/kr-age
+#   ./scripts/generate_srs.sh <circuit-dir>      e.g. coinbase-attestation
 #
 # Uses noir-rs's srs_downloader at the NOIR_RS_TAG in toolchain.env -- the
 # noir-rs the phone proves with -- so the file matches the on-device prover.
@@ -34,7 +34,7 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 if [ -z "${1:-}" ]; then
-    echo "Usage: ./scripts/generate_srs.sh <circuit-dir>   (path under circuits/, e.g. mdl/kr-age)"
+    echo "Usage: ./scripts/generate_srs.sh <circuit-dir>   (path under circuits/, e.g. coinbase-attestation)"
     exit 1
 fi
 

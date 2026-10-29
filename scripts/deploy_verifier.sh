@@ -26,9 +26,6 @@ usage() {
     echo "  coinbase-attestation-v2-android  Deploy CoinbaseAttestationV2Android (Coinbase KYC v2, Android key attestation signer)"
     echo "  oidc-domain-attestation-android-factory  Deploy OidcDomainAttestationAndroidFactory (OIDC, factory Android + Play Integrity)"
     echo "  coinbase-attestation-v2-android-factory  Deploy CoinbaseAttestationV2AndroidFactory (Coinbase KYC v2, factory Android + Play Integrity)"
-    echo "  mdl-kr-ownership               Deploy MdlKrOwnership (Korea Mobile ID — ownership)"
-    echo "  mdl-kr-age                     Deploy MdlKrAge (Korea Mobile ID — age predicate)"
-    echo "  mdl-kr-region                  Deploy MdlKrRegion (Korea Mobile ID — region predicate)"
     echo ""
     echo "Networks: base-sepolia, sepolia, giwa-sepolia, base, mainnet"
     echo ""
@@ -317,21 +314,6 @@ case $COMMAND in
         SOL_FILE="coinbase-attestation-v2/target/CoinbaseAttestationV2.sol"
         SCRIPT_FILE="script/DeployCoinbaseAttestationV2.s.sol"
         DISPLAY_NAME="CoinbaseAttestationV2"
-        ;;
-    mdl-kr-ownership)
-        SOL_FILE="mdl/kr-ownership/target/MdlKrOwnership.sol"
-        SCRIPT_FILE="script/DeployMdlKrOwnership.s.sol"
-        DISPLAY_NAME="MdlKrOwnership"
-        ;;
-    mdl-kr-age)
-        SOL_FILE="mdl/kr-age/target/MdlKrAge.sol"
-        SCRIPT_FILE="script/DeployMdlKrAge.s.sol"
-        DISPLAY_NAME="MdlKrAge"
-        ;;
-    mdl-kr-region)
-        SOL_FILE="mdl/kr-region/target/MdlKrRegion.sol"
-        SCRIPT_FILE="script/DeployMdlKrRegion.s.sol"
-        DISPLAY_NAME="MdlKrRegion"
         ;;
     *)
         echo -e "${RED}Error: Unknown command '$COMMAND'${NC}"
