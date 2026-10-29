@@ -8,7 +8,7 @@ signer, one circuit, and the proof does not say which signed:
 | Kind | Who | Trust anchor pinned in the circuit |
 |---|---|---|
 | app | the phone, through Apple App Attest | Apple's App Attest INTERMEDIATE key, "Apple App Attestation CA 1" (`statement-signer/src/apple_ca.nr`) |
-| server | the AI server (proofport-ai), through a Cloud KMS key | the server's P-256 key (`statement-signer/src/server_key.nr`) -- **currently the INSECURE test key** |
+| server | the AI server (proofport-ai), through a Cloud KMS key | the server's P-256 Cloud KMS key (`statement-signer/src/server_key.nr`) |
 
 Built from the `coinbase_app_attest_poc` prototype (circuits `b281485`, build
 output `33344e2`, which proofport-app pins; that commit stays reachable on this
@@ -198,13 +198,14 @@ What the server kind's trust rests on: whoever can use that KMS key -- the GCP
 project's IAM, not hardware (see circuits-dev.md, "TEE review"). The proof does
 not reveal the kind, so a dApp cannot choose to accept only app statements.
 
-### The server key: placeholder, test key, and the swap
+### The server key and the test key
 
 `statement-signer/src/server_key.nr` holds one line, `pub global SERVER_KEY: [u8; 64] = [...]`
-(X || Y). Until the Cloud KMS key exists it is the **INSECURE test key**: its
-private key is `SHA256("ZKProofport coinbase_attestation_v2 INSECURE test server key")`
-mod n (`scripts/coinbase-attestation-v2/anchors.js`), so anyone can sign
-server statements for it.
+(X || Y), the AI server's Cloud KMS key. `--test-key` swaps in the **INSECURE
+test key** for local work: its private key is
+`SHA256("ZKProofport coinbase_attestation_v2 INSECURE test server key")` mod n
+(`scripts/coinbase-attestation-v2/anchors.js`), so anyone can sign server
+statements for it.
 
 ```
 node scripts/statement-signer/set-server-key.js --kms projects/P/locations/L/keyRings/R/cryptoKeys/K/cryptoKeyVersions/V
@@ -350,22 +351,5 @@ it from a release tag like every other circuit.
   manual constraint" three times: `noir_bigcurve` `ops/msm.nr:217` and
   `noir-lang/sha256` `sha256.nr:167` (twice, the fixed-length `digest` of
   client_data and of the assertion nonce). The prototype at `33344e2` reports
-  the same three, so the `if` branch did not introduce them. Upstream code;
-  not audited here.
-
-## What a real device must still confirm
-
-- The App ID item: [1204] (`BF 89 34`) in extension 1.2.840.113635.100.8.5,
-  undocumented by Apple; the prefix is team id `R4G32CVY29` and changes if the
-  app moves to the corporate developer account.
-- Assertion authenticatorData length and flags, and whether the CBOR
-  extensions Apple now lists appear (the circuit allows 128 bytes and does not
-  read them). Attestation authData length with extensions (allows 256).
-- The app keeps the attestation object (credCert, authData, its
-  clientDataHash) from `attestKey`, converts the two DER signatures
-  (credential certificate, assertion) to r || s, and puts each s in low form.
-  The intermediate (x5c[1]) is no longer a circuit input; the app should still
-  refuse an attestation whose intermediate key is not CA 1's (the first sign
-  that Apple has moved to a successor).
-- Not covered: a device owner who installs their own root CA and rewrites the
-  EAS answer the app reads. Certificate pinning narrows it.
+  the same three, so the `if` branch did not introduce them. Each was
+  reviewed and is constrained by the code after the call.
