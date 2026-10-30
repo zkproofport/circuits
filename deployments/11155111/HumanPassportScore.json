@@ -1,0 +1,7 @@
+{
+  "address": "0xc78585718fd27d428d7a90970d09a2121be36066",
+  "network": "sepolia",
+  "chainId": 11155111,
+  "contract": "HonkVerifier",
+  "library": "0x465FAB030D82241BD95268704537A782B8109807"
+}
