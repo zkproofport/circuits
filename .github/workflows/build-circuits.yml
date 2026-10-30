@@ -123,7 +123,9 @@ jobs:
       - name: Fail if the committed artifacts are out of date
         if: ${{ github.event_name == 'pull_request' || !inputs.commit_artifacts }}
         run: |
-          if git diff --quiet; then
+          # `git status`, not `git diff`: diff ignores untracked files, so a
+          # new circuit's artifacts (never committed yet) read as "matching".
+          if [ -z "$(git status --porcelain -- ':(glob)**/target/**')" ]; then
             echo "Committed artifacts match a clean rebuild."
             exit 0
           fi
@@ -155,7 +157,10 @@ jobs:
       - name: Commit the rebuilt artifacts
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.commit_artifacts }}
         run: |
-          if git diff --quiet; then
+          # `git status`, not `git diff`: on 2026-10-30 a new circuit's first
+          # build (human-passport-score) was all untracked files, `git diff`
+          # saw nothing, and the run committed nothing while reporting success.
+          if [ -z "$(git status --porcelain -- ':(glob)**/target/**')" ]; then
             echo "Nothing to commit — artifacts already match."
             exit 0
           fi
