@@ -68,11 +68,13 @@ jobs:
       # that was `beta`, so beta is never behind latest.
       - name: Read the shipped circuit list from the published SDK
         run: |
+          # Installed, not unpacked: since 0.5.0-beta the SDK's circuits.js
+          # re-exports @zkproofport-app/core, so it only loads with its
+          # dependencies beside it.
           sdk="$RUNNER_TEMP/sdk"
           mkdir -p "$sdk"
-          npm pack @zkproofport-app/sdk@beta --pack-destination "$sdk" >/dev/null
-          tar -xzf "$sdk"/*.tgz -C "$sdk"
-          echo "SDK_CIRCUITS_JS=$sdk/package/dist/circuits.js" >> "$GITHUB_ENV"
+          npm install --prefix "$sdk" --no-audit --no-fund --ignore-scripts @zkproofport-app/sdk@beta >/dev/null
+          echo "SDK_CIRCUITS_JS=$sdk/node_modules/@zkproofport-app/sdk/dist/circuits.js" >> "$GITHUB_ENV"
 
       # build.sh writes each circuit's SRS with noir-rs's srs_downloader
       # (scripts/generate_srs.sh), a Rust build of several minutes; keep the
