@@ -12,8 +12,9 @@
 #
 # Prints `bb gates` (deterministic) for each, then `bb prove -t evm` wall time
 # and peak RSS (macOS /usr/bin/time -l) per run for:
-#   standard, server kind    the REAL circuit (test server key pinned)
-#   standard, app kind       the synthetic-anchors copy (only anchors differ)
+#   standard, server and app kind   the synthetic-anchors copy (only the
+#                            anchor constants differ; the real circuit pins
+#                            the Cloud KMS key, so no fixture can sign for it)
 #   android, android_factory the synthetic-anchors copies
 # Timings depend on the machine's load; quote them with `uptime`.
 set -eu
@@ -63,7 +64,7 @@ prove() {
     && echo "  verified" || { echo "  bb verify FAILED"; exit 1; }
   echo "  proof $(wc -c < "$OUT/$label/proof" | tr -d ' ') bytes, public inputs $(wc -c < "$OUT/$label/public_inputs" | tr -d ' ') bytes, vk log size $(od -An -tu1 -j31 -N1 "$vk" | tr -d ' ')"
 }
-prove standard_server_real "$CIRCUITS/coinbase-country-attestation-v2" witness_real_server_action
+prove standard_server_synthetic "$CIRCUITS/coinbase-country-attestation-v2-synthetic-anchors" witness_server_action
 prove standard_app_synthetic "$CIRCUITS/coinbase-country-attestation-v2-synthetic-anchors" witness_action
 prove android_synthetic "$CIRCUITS/coinbase-country-attestation-v2-android-synthetic-anchors" witness_action
 prove android_factory_synthetic "$CIRCUITS/coinbase-country-attestation-v2-android-factory-synthetic-anchors" witness_action
