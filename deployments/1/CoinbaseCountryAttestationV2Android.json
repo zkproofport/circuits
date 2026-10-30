@@ -1,0 +1,7 @@
+{
+  "address": "0xc0255ef1eb2a77e441a4745df9b61859e586ae83",
+  "network": "mainnet",
+  "chainId": 1,
+  "contract": "HonkVerifier",
+  "library": "0xf053a6d7b71a9fc7170fdd5488be5c0aad56ca18"
+}
