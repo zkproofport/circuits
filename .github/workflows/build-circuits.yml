@@ -60,11 +60,17 @@ jobs:
       # Which circuits ship comes from the customer SDK's key-path table
       # (write-digests.sh, check-shipped-circuits.sh). This repository is
       # checked out alone here, so read the SDK as customers get it: from npm.
+      # The `beta` dist-tag, not `latest`: circuits ship to the release being
+      # prepared, which is published as beta first, and `latest` lags it by a
+      # whole release. On 2026-10-30 `latest` was 0.4.3, which still listed
+      # the Korean mobile ID circuits removed on 2026-10-29, so every build
+      # after their removal failed here. Promotion moves `latest` to a version
+      # that was `beta`, so beta is never behind latest.
       - name: Read the shipped circuit list from the published SDK
         run: |
           sdk="$RUNNER_TEMP/sdk"
           mkdir -p "$sdk"
-          npm pack @zkproofport-app/sdk --pack-destination "$sdk" >/dev/null
+          npm pack @zkproofport-app/sdk@beta --pack-destination "$sdk" >/dev/null
           tar -xzf "$sdk"/*.tgz -C "$sdk"
           echo "SDK_CIRCUITS_JS=$sdk/package/dist/circuits.js" >> "$GITHUB_ENV"
 

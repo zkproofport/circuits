@@ -39,7 +39,7 @@ replace~        if i < country_list_length {~        if true {~match_past_length
 replace~        (signer_kind == KIND_APP) | (signer_kind == KIND_SERVER),~        true,~kind_unknown
 replace~    if signer_kind == KIND_APP {~    if false {~app_chain_with_server_signature
 replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),~        true | std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_sig, digest),~server_other_key
-replace~        verify_credential_signature(~        true | verify_credential_signature(~cert_other_ca
+replace~        verify_credential_signature(\n            ca_x,~        true | verify_credential_signature(\n            ca_x,~cert_other_ca
 delete~App Attest environment does not match~env_development
 CASES
 "$SCRIPT_DIR/../statement-signer/mutation-check.sh" coinbase-country-attestation-v2 "$CASES" "${1:-}"

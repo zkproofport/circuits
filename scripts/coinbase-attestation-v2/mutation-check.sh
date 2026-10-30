@@ -38,7 +38,7 @@ replace~        std::ecdsa_secp256r1::verify_signature(key_x, key_y, statement_s
 # Apple's chain under the pinned CA (app-attest-libs). The root -> intermediate
 # link is not in this circuit (CA 1 is pinned); its checks are the
 # library's unit tests.
-replace~        verify_credential_signature(~        true | verify_credential_signature(~cert_other_ca
+replace~        verify_credential_signature(\n            ca_x,~        true | verify_credential_signature(\n            ca_x,~cert_other_ca
 delete~App Attest environment does not match~env_development
 delete~Assertion is not for this app~assertion_wrong_rpid
 delete~Assertion counter is zero~assertion_counter_zero

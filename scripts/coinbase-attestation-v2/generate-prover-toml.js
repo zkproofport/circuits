@@ -366,7 +366,8 @@ assertion_auth_data_len = ${chain.assertAuth.length}
       exclusion_refused: { list: { list: [otherCountry, c], length: 2, included: false } },
       not_in_inclusion_list: { list: { list: [otherCountry, 'ZZ'], length: 2, included: true } },
       match_past_length: { list: { list: [otherCountry, c], length: 1, included: true } },
-      list_length_zero: { list: { list: [c], length: 0, included: true } },
+      // Exclusion mode, so that without the emptiness check nothing else refuses it.
+      list_length_zero: { list: { list: [c], length: 0, included: false } },
       list_length_eleven: { list: { list: ten, length: 11, included: true } },
       // the statement's country
       client_other_country: { clientData: clientData(A, { country: Buffer.from(otherCountry, 'ascii') }) },

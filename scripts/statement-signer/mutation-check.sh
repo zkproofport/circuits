@@ -108,12 +108,22 @@ while IFS= read -r c || [ -n "$c" ]; do
       echo "  FAILED   $msg: the deletion removed $((before - after)) lines"; FAILED=$((FAILED + 1)); continue
     fi
   else
-    count=$(grep -rcF -- "$from" "${SRCS[@]}" | awk -F: '{s+=$2} END {print s}')
-    if [ "$count" != 1 ]; then
-      echo "  FAILED   \"$from\": found on $count lines, need exactly 1"; FAILED=$((FAILED + 1)); continue
+    # A literal `\n` in <exact text> / <new text> is a newline, so a text that
+    # occurs on more than one line (a call written in two libraries) can be
+    # pinned by the line after it. The count is of exact occurrences across
+    # every copied source, not of matching lines.
+    if ! hits=$(FROM="$from" python3 -I -c '
+import os, sys
+want = os.environ["FROM"].replace("\\n", "\n")
+found = [(p, open(p).read().count(want)) for d in sys.argv[1:] for r, _, fs in os.walk(d) for p in [os.path.join(r, f) for f in fs if f.endswith(".nr")]]
+found = [(p, n) for p, n in found if n]
+total = sum(n for _, n in found)
+if total != 1:
+    print(total); sys.exit(1)
+print(found[0][0])' "${SRCS[@]}"); then
+      echo "  FAILED   \"$from\": found $hits times, need exactly 1"; FAILED=$((FAILED + 1)); continue
     fi
-    hits=$(grep -rlF -- "$from" "${SRCS[@]}")
-    FROM="$from" TO="$to" python3 -I -c 'import os,sys; p=sys.argv[1]; s=open(p).read(); n=s.replace(os.environ["FROM"], os.environ["TO"]); assert n != s; open(p,"w").write(n)' "$hits" \
+    FROM="$from" TO="$to" python3 -I -c 'import os,sys; p=sys.argv[1]; f=os.environ["FROM"].replace("\\n","\n"); t=os.environ["TO"].replace("\\n","\n"); s=open(p).read(); n=s.replace(f, t); assert n != s; open(p,"w").write(n)' "$hits" \
       || { echo "  FAILED   could not apply the replacement"; FAILED=$((FAILED + 1)); continue; }
   fi
 
