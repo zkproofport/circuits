@@ -56,6 +56,7 @@ CIRCUITS = [
     ('CoinbaseCountryAttestationV2AndroidFactory', 'Coinbase Country v2 (Android, factory keys)'),
     ('GiwaAttestation', 'GIWA attestation'),
     ('DojangPlayground', 'Dojang Playground'),
+    ('HumanPassportScore', 'Human Passport score'),
 ]
 EXCLUDED_SCRIPTS = {
     'NullifierRegistry': 'deprecated nullifier registry, not a verifier',

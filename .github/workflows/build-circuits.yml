@@ -99,6 +99,7 @@ jobs:
                      oidc-domain-attestation-android-factory coinbase-attestation-v2-android-factory \
                      coinbase-country-attestation-v2 coinbase-country-attestation-v2-android \
                      coinbase-country-attestation-v2-android-factory \
+                     human-passport-score \
                      zktls; do
             echo "::group::$dir"
             SKIP_POST_BUILD=1 ./scripts/build.sh "$dir"

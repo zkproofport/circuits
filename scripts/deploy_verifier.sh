@@ -21,6 +21,7 @@ usage() {
     echo "  oidc-domain-attestation        Deploy OidcDomainAttestation verifier"
     echo "  giwa-attestation               Deploy GiwaAttestation verifier"
     echo "  dojang-playground              Deploy DojangPlayground verifier"
+    echo "  human-passport-score           Deploy HumanPassportScore verifier (Human Passport scoreV2 threshold)"
     echo "  coinbase-attestation-v2        Deploy CoinbaseAttestationV2 (mainnets refused while the test server key is pinned)"
     echo "  oidc-domain-attestation-android  Deploy OidcDomainAttestationAndroid (OIDC, Android key attestation signer)"
     echo "  coinbase-attestation-v2-android  Deploy CoinbaseAttestationV2Android (Coinbase KYC v2, Android key attestation signer)"
@@ -296,6 +297,13 @@ case $COMMAND in
         SOL_FILE="dojang-playground/target/DojangPlayground.sol"
         SCRIPT_FILE="script/DeployDojangPlayground.s.sol"
         DISPLAY_NAME="DojangPlayground"
+        ;;
+    human-passport-score)
+        # No pinned server key: the issuer is chosen by a public Merkle root
+        # that core compares with Human Passport's (HUMAN_PASSPORT_ISSUER_ROOT).
+        SOL_FILE="human-passport-score/target/HumanPassportScore.sol"
+        SCRIPT_FILE="script/DeployHumanPassportScore.s.sol"
+        DISPLAY_NAME="HumanPassportScore"
         ;;
     coinbase-country-attestation-v2)
         # Coinbase Country v2: the same statement-signer anchors as Coinbase

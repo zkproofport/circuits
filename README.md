@@ -49,6 +49,10 @@ GIWA Sepolia proof flow using a test `MockGiwaAttester`, mobile-compatible Ultra
 
 Proves that a wallet signed the request and that the same key signed a GIWA Sepolia `payAndIssueEAS()` call to the Playground faucet (`0x63CCe2b569A7bC35895ee24306c1512fefc06121`), the call that issues a Dojang attestation to its sender. Legacy (EIP-155) and EIP-1559 transactions are both accepted. The issuance is self-signed, so there is no issuer check and no inclusion check; the circuit demonstrates the flow.
 
+### Human Passport score — Beta
+
+Proves that the signing wallet holds a Human Passport scoreV2 attestation whose EIP-712 request was signed by an issuer in a public Merkle root of (issuer, GitcoinVerifier domain, schema) leaves, with `score >= min_score` for a public scorer id and `now < expirationTime`. The wallet signs the request (an EIP-712 action, or the signal hash); the nullifier is the shared wallet + circuit-tag rule. Revocation is not checked. Design, measurements and limits in [`human-passport-score/README.md`](human-passport-score/README.md).
+
 ## Shared nullifier schemes
 
 ### Coinbase transaction profiles

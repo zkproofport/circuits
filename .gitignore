@@ -94,3 +94,9 @@ coinbase-country-attestation-v2-android-factory-mutant/
 coinbase-country-v2-libs-mutant/
 coinbase-country-attestation-v2-android/target/*.srs
 coinbase-country-attestation-v2-android-factory/target/*.srs
+# human_passport_score (2026-10-30): its 2^21 reference string is published in
+# parts like the other 2^21 packages; mutation copies are rebuilt per run.
+human-passport-score/target/*.srs
+human-passport-mutant/
+# Executed only, never shipped: no artefacts to keep.
+human-passport-real-issuer-check/target/
