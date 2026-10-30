@@ -26,6 +26,9 @@ usage() {
     echo "  coinbase-attestation-v2-android  Deploy CoinbaseAttestationV2Android (Coinbase KYC v2, Android key attestation signer)"
     echo "  oidc-domain-attestation-android-factory  Deploy OidcDomainAttestationAndroidFactory (OIDC, factory Android + Play Integrity)"
     echo "  coinbase-attestation-v2-android-factory  Deploy CoinbaseAttestationV2AndroidFactory (Coinbase KYC v2, factory Android + Play Integrity)"
+    echo "  coinbase-country-attestation-v2  Deploy CoinbaseCountryAttestationV2 (Coinbase Country v2; mainnets refused while the test server key is pinned)"
+    echo "  coinbase-country-attestation-v2-android  Deploy CoinbaseCountryAttestationV2Android (Coinbase Country v2, Android key attestation signer)"
+    echo "  coinbase-country-attestation-v2-android-factory  Deploy CoinbaseCountryAttestationV2AndroidFactory (Coinbase Country v2, factory Android + Play Integrity)"
     echo ""
     echo "Networks: base-sepolia, sepolia, giwa-sepolia, base, mainnet"
     echo ""
@@ -257,7 +260,7 @@ case $COMMAND in
         SCRIPT_FILE="script/DeployOidcDomainAttestation.s.sol"
         DISPLAY_NAME="OidcDomainAttestation"
         ;;
-    oidc-domain-attestation-android|coinbase-attestation-v2-android|oidc-domain-attestation-android-factory|coinbase-attestation-v2-android-factory)
+    oidc-domain-attestation-android|coinbase-attestation-v2-android|oidc-domain-attestation-android-factory|coinbase-attestation-v2-android-factory|coinbase-country-attestation-v2-android|coinbase-country-attestation-v2-android-factory)
         # The Android packages of oidc_domain_attestation and
         # coinbase_attestation v2 (same circuit ids, Android key attestation
         # signer). They pin Google's Key Attestation CA1 and our Play signing
@@ -277,6 +280,8 @@ case $COMMAND in
             coinbase-attestation-v2-android) DISPLAY_NAME="CoinbaseAttestationV2Android" ;;
             oidc-domain-attestation-android-factory) DISPLAY_NAME="OidcDomainAttestationAndroidFactory" ;;
             coinbase-attestation-v2-android-factory) DISPLAY_NAME="CoinbaseAttestationV2AndroidFactory" ;;
+            coinbase-country-attestation-v2-android) DISPLAY_NAME="CoinbaseCountryAttestationV2Android" ;;
+            coinbase-country-attestation-v2-android-factory) DISPLAY_NAME="CoinbaseCountryAttestationV2AndroidFactory" ;;
             *) echo -e "${RED}Error: no Android package named '$COMMAND'${NC}"; exit 1 ;;
         esac
         SOL_FILE="$COMMAND/target/$DISPLAY_NAME.sol"
@@ -291,6 +296,22 @@ case $COMMAND in
         SOL_FILE="dojang-playground/target/DojangPlayground.sol"
         SCRIPT_FILE="script/DeployDojangPlayground.s.sol"
         DISPLAY_NAME="DojangPlayground"
+        ;;
+    coinbase-country-attestation-v2)
+        # Coinbase Country v2: the same statement-signer anchors as Coinbase
+        # KYC v2, so the same rule -- mainnets refused while the test server
+        # key is pinned.
+        case $NETWORK in
+            base|mainnet)
+                if ! node "$SCRIPT_DIR/statement-signer/set-server-key.js" --require-real; then
+                    echo -e "${RED}Error: the statement-signer server-key check failed (see the output above); not deploying coinbase-country-attestation-v2 to $NETWORK${NC}"
+                    exit 1
+                fi
+                ;;
+        esac
+        SOL_FILE="coinbase-country-attestation-v2/target/CoinbaseCountryAttestationV2.sol"
+        SCRIPT_FILE="script/DeployCoinbaseCountryAttestationV2.s.sol"
+        DISPLAY_NAME="CoinbaseCountryAttestationV2"
         ;;
     coinbase-attestation-v2)
         # Coinbase KYC v2. A verifier built while statement-signer/src/server_key.nr

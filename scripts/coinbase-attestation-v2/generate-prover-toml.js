@@ -5,6 +5,16 @@
  *
  *   node generate-prover-toml.js --coinbase <coinbase-attestation Prover.toml> \
  *        --synthetic-dir <synthetic-anchors copy> --real-dir <coinbase-attestation-v2>
+ *        [--circuit coinbase_attestation|coinbase_country_attestation]
+ *
+ * --circuit picks the statement the fixtures carry (default
+ * coinbase_attestation). coinbase_country_attestation (package
+ * coinbase-country-attestation-v2) takes --coinbase from
+ * coinbase-country-attestation/Prover.toml (a real attestCountry transaction),
+ * writes the 227-byte statement (the attestation's country appended), the
+ * country-list public inputs, and the country cases on top of every KYC case;
+ * its kyc_tx case needs --kyc-coinbase <coinbase-attestation Prover.toml> for
+ * the same wallet.
  *
  * Needs ATTESTED_WALLET_KEY in the environment: the key of the wallet the
  * Coinbase fixture is for (make-fixtures.sh reads it from proofport-ai/.env.test
@@ -58,9 +68,27 @@ const opt = name => {
 };
 
 // ---- constants that must match the circuit ---------------------------------
-const CIRCUIT_TAG = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('coinbase_attestation')));
 const MAGIC = Buffer.from('ZKProofport/AA/1');
 const KYC_SCHEMA = ethers.getBytes('0xf8b05c79f090979bf4a80270aba232dff11a10d9ca55c4f88de95317970f0de9');
+const COUNTRY_SCHEMA = ethers.getBytes('0x1801901fabd0e6189356b4fb52bb0ab855276d84f7ec140839fbd1f6801ca065');
+const tagOf = id => ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes(id)));
+// What differs between the circuit ids sharing this generator. An unknown id
+// is an error, never the KYC row.
+const PROFILES = {
+  coinbase_attestation: { schema: KYC_SCHEMA, clientDataLen: 225, country: false, label: 'Coinbase KYC v2' },
+  coinbase_country_attestation: { schema: COUNTRY_SCHEMA, clientDataLen: 227, country: true, label: 'Coinbase Country v2' },
+};
+const flagOr = (name, fallback) => {
+  const args = process.argv.slice(2);
+  const i = args.indexOf(name);
+  return i === -1 ? fallback : args[i + 1];
+};
+const CIRCUIT_ID = flagOr('--circuit', 'coinbase_attestation');
+if (!Object.prototype.hasOwnProperty.call(PROFILES, CIRCUIT_ID)) {
+  throw new Error(`Unknown --circuit ${CIRCUIT_ID}. Known: ${Object.keys(PROFILES).join(', ')}.`);
+}
+const PROFILE = PROFILES[CIRCUIT_ID];
+const CIRCUIT_TAG = tagOf(CIRCUIT_ID);
 const COINBASE_ATTESTER = ethers.getBytes('0x357458739F90461b99789350868CD7CF330Dd7EE');
 const SCOPE_STRING = 'proofport';
 
@@ -88,6 +116,18 @@ function parseToml(text) {
   return out;
 }
 
+/** attestCountry(uint256)'s country: calldata bytes 14-15 of the raw EIP-1559 tx. */
+function txCountry(cb) {
+  const raw = ethers.hexlify(Uint8Array.from(cb.raw_transaction.slice(0, Number(cb.tx_length))));
+  const data = ethers.getBytes(ethers.Transaction.from(raw).data);
+  return Buffer.from(data.subarray(14, 16));
+}
+const countryRows = list => {
+  const rows = list.map(c => (typeof c === 'string' ? Array.from(Buffer.from(c, 'ascii')) : Array.from(c)));
+  while (rows.length < 10) rows.push([0, 0]);
+  return rows;
+};
+
 // ---- TOML -------------------------------------------------------------------
 function main() {
   const COINBASE_TOML = path.resolve(opt('--coinbase'));
@@ -100,6 +140,14 @@ function main() {
   if (ethers.getAddress(ethers.hexlify(userAddress)) !== wallet.address) {
     throw new Error(`${COINBASE_TOML} is for ${ethers.hexlify(userAddress)}, the key is for ${wallet.address}`);
   }
+  // The country the proven transaction attests (Country only), and the public
+  // list the accepted fixtures use: inclusion of that country after one other.
+  const country = PROFILE.country ? txCountry(cb) : null;
+  if (PROFILE.country && !/^[A-Z]{2}$/.test(country.toString('ascii'))) {
+    throw new Error(`${COINBASE_TOML}'s transaction attests '${country.toString('hex')}', not two ASCII capitals`);
+  }
+  const otherCountry = PROFILE.country ? (country.toString('ascii') === 'US' ? 'JP' : 'US') : null;
+  const LIST = PROFILE.country ? { list: [otherCountry, country.toString('ascii')], length: 2, included: true } : null;
   const pub = ethers.getBytes(wallet.signingKey.publicKey);
   const scope = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes(SCOPE_STRING)));
   const secret = ethers.getBytes(ethers.keccak256(ethers.concat([userAddress, CIRCUIT_TAG])));
@@ -108,8 +156,8 @@ function main() {
 
   // The two requests a wallet can sign.
   const signalHash = ethers.getBytes(ethers.solidityPackedKeccak256(
-    ['address', 'string', 'string'], [wallet.address, SCOPE_STRING, 'coinbase_attestation']));
-  const domain = { name: 'ZKProofport Coinbase KYC v2 fixture', version: '1', chainId: 8453, verifyingContract: '0x0000000000000000000000000000000000000001' };
+    ['address', 'string', 'string'], [wallet.address, SCOPE_STRING, CIRCUIT_ID]));
+  const domain = { name: `ZKProofport ${PROFILE.label} fixture`, version: '1', chainId: 8453, verifyingContract: '0x0000000000000000000000000000000000000001' };
   const types = { Join: [{ name: 'member', type: 'address' }, { name: 'nonce', type: 'string' }] };
   const message = { member: wallet.address, nonce: 'coinbase-attestation-v2-1' };
   const requests = {
@@ -168,11 +216,12 @@ function main() {
     const t = Buffer.alloc(8);
     t.writeBigUInt64BE(BigInt(o.timestamp ?? attestedAt));
     const cd = Buffer.concat([
-      MAGIC, Buffer.from(CIRCUIT_TAG), Buffer.from(o.wallet ?? userAddress), t,
-      Buffer.from(o.schema ?? KYC_SCHEMA), Buffer.from(COINBASE_ATTESTER), easUid,
+      MAGIC, Buffer.from(o.tag ?? CIRCUIT_TAG), Buffer.from(o.wallet ?? userAddress), t,
+      Buffer.from(o.schema ?? PROFILE.schema), Buffer.from(COINBASE_ATTESTER), easUid,
       Buffer.from([o.revoked ?? 0]), Buffer.from(o.digest ?? req.digest), Buffer.from(o.scope ?? scope),
+      ...(PROFILE.country ? [Buffer.from(o.country ?? country)] : []),
     ]);
-    if (cd.length !== 225) throw new Error(`clientData is ${cd.length} bytes`);
+    if (cd.length !== PROFILE.clientDataLen) throw new Error(`clientData is ${cd.length} bytes`);
     return cd;
   }
   function assertion(cd, o = {}) {
@@ -193,6 +242,14 @@ function main() {
   /** One Prover TOML. kind 'app' builds the chain unless overridden; 'server'
    *  passes zeros for every App Attest input, exactly as README.md says. */
   function toml(req, o = {}) {
+    const tx = o.tx ?? cb;
+    const list = o.list ?? LIST;
+    const countryToml = list
+      ? `country_list = [\n${countryRows(list.list).map(r => '  ' + JSON.stringify(r).replace(/,/g, ', ')).join(',\n')},\n]
+country_list_length = ${list.length}
+is_included = ${list.included}
+`
+      : '';
     const kindName = o.kind ?? 'app';
     const cd = o.clientData ?? clientData(req);
     let chain;
@@ -213,30 +270,31 @@ function main() {
     const kindByte = o.kindByte ?? { app: KIND_APP, server: KIND_SERVER }[kindName];
     return `# Generated by scripts/coinbase-attestation-v2/generate-prover-toml.js
 # Coinbase part: real (from ${path.basename(path.dirname(COINBASE_TOML))}/Prover.toml).
+# Circuit: ${CIRCUIT_ID} (${PROFILE.label}).
 # Statement: ${kindName} kind${kindName === 'app' ? ', SYNTHETIC App Attest chain' : ', INSECURE test server key'}.
 # Case: ${o.label ?? 'accepted'}
 
 signal_hash = ${arr(req.signal)}
 domain_separator = ${arr(req.domainSeparator)}
 action_hash = ${arr(req.actionHash)}
-signer_list_merkle_root = ${arr(cb.signer_list_merkle_root)}
-scope = ${arr(scope)}
-nullifier = ${arr(nullifier)}
+signer_list_merkle_root = ${arr(tx.signer_list_merkle_root)}
+${countryToml}scope = ${arr(scope)}
+nullifier = ${arr(o.nullifier ?? nullifier)}
 attested_at = ${o.attestedAt ?? attestedAt}
 
 user_address = ${arr(userAddress)}
 user_signature = ${arr(req.userSignature)}
 user_pubkey_x = ${arr(pub.slice(1, 33))}
 user_pubkey_y = ${arr(pub.slice(33, 65))}
-raw_transaction = ${arr(cb.raw_transaction)}
-tx_length = ${cb.tx_length}
-coinbase_attester_pubkey_x = ${arr(cb.coinbase_attester_pubkey_x)}
-coinbase_attester_pubkey_y = ${arr(cb.coinbase_attester_pubkey_y)}
+raw_transaction = ${arr(tx.raw_transaction)}
+tx_length = ${tx.tx_length}
+coinbase_attester_pubkey_x = ${arr(tx.coinbase_attester_pubkey_x)}
+coinbase_attester_pubkey_y = ${arr(tx.coinbase_attester_pubkey_y)}
 coinbase_signer_merkle_proof = [
-${cb.coinbase_signer_merkle_proof.map(row => arr(row)).join(',\n')}
+${tx.coinbase_signer_merkle_proof.map(row => arr(row)).join(',\n')}
 ]
-coinbase_signer_leaf_index = ${cb.coinbase_signer_leaf_index}
-merkle_proof_depth = ${cb.merkle_proof_depth}
+coinbase_signer_leaf_index = ${tx.coinbase_signer_leaf_index}
+merkle_proof_depth = ${tx.merkle_proof_depth}
 
 client_data = ${arr(cd)}
 signer_kind = ${kindByte}
@@ -283,6 +341,50 @@ assertion_auth_data_len = ${chain.assertAuth.length}
   ]);
   if (oidcStatement.length !== 313) throw new Error(`OIDC statement is ${oidcStatement.length} bytes`);
 
+  // Country only: the list rule (v1's, unchanged), the statement's country,
+  // and another Coinbase circuit's material. Each changes ONE thing; where a
+  // change needs the statement to follow it (kyc_tx), the statement is
+  // re-made so that only the named check can refuse.
+  function countryCases() {
+    const c = country.toString('ascii');
+    const ten = ['AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', c];
+    const kycTomlPath = flagOr('--kyc-coinbase', null);
+    if (!kycTomlPath) throw new Error('--kyc-coinbase <coinbase-attestation Prover.toml> is required for coinbase_country_attestation');
+    const kyc = parseToml(fs.readFileSync(path.resolve(kycTomlPath), 'utf8'));
+    if (Buffer.compare(Buffer.from(kyc.user_address), userAddress) !== 0) throw new Error(`${kycTomlPath} is for another wallet`);
+    const kycTxCountry = txCountry(kyc);
+    const kycTag = tagOf('coinbase_attestation');
+    const kycSecret = ethers.getBytes(ethers.keccak256(ethers.concat([userAddress, kycTag])));
+    const kycStatement = Buffer.concat([clientData(A, { tag: kycTag, schema: KYC_SCHEMA }).subarray(0, 225), country]);
+    return {
+      // accepted
+      exclusion_accepted: { list: { list: [otherCountry], length: 1, included: false } },
+      list_full_ten: { list: { list: ten, length: 10, included: true } },
+      list_single: { list: { list: [c], length: 1, included: true } },
+      server_exclusion: { kind: 'server', list: { list: [otherCountry], length: 1, included: false } },
+      // the list
+      exclusion_refused: { list: { list: [otherCountry, c], length: 2, included: false } },
+      not_in_inclusion_list: { list: { list: [otherCountry, 'ZZ'], length: 2, included: true } },
+      match_past_length: { list: { list: [otherCountry, c], length: 1, included: true } },
+      list_length_zero: { list: { list: [c], length: 0, included: true } },
+      list_length_eleven: { list: { list: ten, length: 11, included: true } },
+      // the statement's country
+      client_other_country: { clientData: clientData(A, { country: Buffer.from(otherCountry, 'ascii') }) },
+      client_lowercase_country: { clientData: clientData(A, { country: Buffer.from(c.toLowerCase(), 'ascii') }) },
+      server_other_country: { kind: 'server', clientData: clientData(A, { country: Buffer.from(otherCountry, 'ascii') }) },
+      // another Coinbase circuit's material
+      client_kyc_tag: { clientData: clientData(A, { tag: kycTag }) },
+      client_kyc_schema: { clientData: clientData(A, { schema: KYC_SCHEMA }) },
+      kyc_statement_replay: { kind: 'server', clientData: kycStatement },
+      kyc_nullifier: { nullifier: ethers.getBytes(ethers.keccak256(ethers.concat([kycSecret, scope]))) },
+      kyc_tx: {
+        tx: kyc,
+        list: { list: [kycTxCountry], length: 1, included: true },
+        clientData: clientData(A, { country: kycTxCountry }),
+      },
+    };
+  }
+
   const cases = {
     // ---- server kind
     server_action: { kind: 'server' },
@@ -328,13 +430,14 @@ assertion_auth_data_len = ${chain.assertAuth.length}
     // (statement-signer serves oidc_domain_attestation too). The server's
     // signature is over the whole 313-byte provider-key statement; the
     // clientData is what a replayer can make of it in 225 bytes.
-    oidc_statement_replay: { kind: 'server', clientData: oidcStatement.subarray(0, 225), statementSig: serverSign(oidcStatement, server) },
+    oidc_statement_replay: { kind: 'server', clientData: oidcStatement.subarray(0, PROFILE.clientDataLen), statementSig: serverSign(oidcStatement, server) },
     oidc_statement_magic_swapped: {
       kind: 'server',
-      clientData: Buffer.concat([MAGIC, oidcStatement.subarray(16, 225)]),
+      clientData: Buffer.concat([MAGIC, oidcStatement.subarray(16, PROFILE.clientDataLen)]),
       statementSig: serverSign(oidcStatement, server),
     },
   };
+  if (PROFILE.country) Object.assign(cases, countryCases());
   for (const [name, o] of Object.entries(cases)) {
     syn(path.join('test-vectors', `${name}.toml`), toml(A, { ...o, label: name }));
   }

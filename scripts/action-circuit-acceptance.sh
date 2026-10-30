@@ -1,7 +1,7 @@
 #!/bin/bash
 # Acceptance run for a circuit that signs an EIP-712 action OR a signal hash.
 #
-# `giwa_attestation`, `dojang_playground` and `coinbase_attestation_v2` (both its packages) work this way. The run takes the circuit directory rather
+# `giwa_attestation`, `dojang_playground`, `coinbase_attestation_v2` and `coinbase_country_attestation_v2` (every package of each) work this way. The run takes the circuit directory rather
 # than assuming GIWA, so the next circuit with the same branch reuses it instead
 # of growing a second copy -- two copies of an acceptance run is how two
 # circuits come to be checked to different standards.
@@ -71,6 +71,20 @@ case "$CIRCUIT_REL" in
         REGEN="$SCRIPT_DIR/coinbase-attestation-v2/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
         ;;
+    coinbase-country-attestation-v2-synthetic-anchors)
+        # coinbase_country_attestation v2, anchors replaced as for KYC v2.
+        # Real attestCountry transaction; same wallet key.
+        REGEN="$SCRIPT_DIR/coinbase-country-attestation-v2/make-fixtures.sh"
+        REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        ;;
+    coinbase-country-attestation-v2-android-synthetic-anchors)
+        REGEN="$SCRIPT_DIR/coinbase-attestation-v2-android/make-fixtures.sh country-rkp"
+        REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        ;;
+    coinbase-country-attestation-v2-android-factory-synthetic-anchors)
+        REGEN="$SCRIPT_DIR/coinbase-attestation-v2-android/make-fixtures.sh country-factory"
+        REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        ;;
     coinbase-attestation-v2-android-synthetic-anchors)
         # coinbase_attestation v2's Android package with Google's root
         # replaced by the synthetic root (make-synthetic-anchors.sh). Real
@@ -98,6 +112,7 @@ mkdir -p "$VECTORS"
 if [ ! -f Prover.toml ] || [ ! -f Prover.no-action.toml ] \
    || { [ "$CIRCUIT_REL" = dojang-playground ] && [ ! -f "$VECTORS/tx_other_signer.toml" ]; } \
    || { [ "$CIRCUIT_REL" = coinbase-attestation-v2-synthetic-anchors ] && [ ! -f "$VECTORS/client_revoked.toml" ]; } \
+   || { case "$CIRCUIT_REL" in coinbase-country-attestation-v2*) [ ! -f "$VECTORS/client_other_country.toml" ] ;; *) false ;; esac; } \
    || { [ "$CIRCUIT_REL" = coinbase-attestation-v2-android-synthetic-anchors ] && [ ! -f "$VECTORS/client_revoked.toml" ]; } \
    || { [ "$CIRCUIT_REL" = coinbase-attestation-v2-android-factory-synthetic-anchors ] && [ ! -f "$VECTORS/client_revoked.toml" ]; }; then
   if [ -f "$REGEN_NEEDS" ]; then
@@ -115,6 +130,45 @@ fi
 
 PASSED=0
 FAILED=0
+
+# coinbase_country_attestation v2 only (scripts/coinbase-attestation-v2/
+# generate-prover-toml.js --circuit coinbase_country_attestation writes them):
+# v1's country-list rule, the statement's country, and KYC material replayed.
+country_cases() {
+    echo ""
+    echo "Country (accepted):"
+    accept "exclusion_accepted" "test-vectors/exclusion_accepted"
+    accept "list_full_ten"      "test-vectors/list_full_ten"
+    accept "list_single"        "test-vectors/list_single"
+    accept "server_exclusion"   "test-vectors/server_exclusion"
+    echo ""
+    echo "Country (refused):"
+    refuse "exclusion_refused"        "test-vectors/exclusion_refused"        "Country is in exclusion list"
+    refuse "not_in_inclusion_list"    "test-vectors/not_in_inclusion_list"    "Country not in inclusion list"
+    refuse "match_past_length"        "test-vectors/match_past_length"        "Country not in inclusion list"
+    refuse "list_length_zero"         "test-vectors/list_length_zero"         "Country list must not be empty"
+    refuse "list_length_eleven"       "test-vectors/list_length_eleven"       "Country list length exceeds maximum"
+    refuse "client_other_country"     "test-vectors/client_other_country"     "clientData names another country"
+    refuse "client_lowercase_country" "test-vectors/client_lowercase_country" "clientData names another country"
+    refuse "server_other_country"     "test-vectors/server_other_country"     "clientData names another country"
+    refuse "client_kyc_tag"           "test-vectors/client_kyc_tag"           "clientData is for another circuit"
+    refuse "client_kyc_schema"        "test-vectors/client_kyc_schema"        "clientData names another EAS schema"
+    refuse "kyc_statement_replay"     "test-vectors/kyc_statement_replay"     "clientData is for another circuit"
+    refuse "kyc_nullifier"            "test-vectors/kyc_nullifier"            "Nullifier mismatch"
+    refuse "kyc_tx"                   "test-vectors/kyc_tx"                   "Invalid function selector"
+}
+
+# The Android packages of coinbase_country_attestation v2: the cases a
+# different signer could plausibly break (the list rule itself is the iOS
+# package's run, one shared library).
+android_country_cases() {
+    echo ""
+    echo "Country:"
+    accept "exclusion_accepted"   "test-vectors/exclusion_accepted"
+    refuse "client_other_country" "test-vectors/client_other_country" "clientData names another country"
+    refuse "kyc_statement_replay" "test-vectors/kyc_statement_replay" "clientData is for another circuit"
+    refuse "not_in_inclusion_list" "test-vectors/not_in_inclusion_list" "Country not in inclusion list"
+}
 
 # A fixture the circuit must accept.
 accept() {
@@ -197,7 +251,7 @@ case "$CIRCUIT_REL" in
     echo "Accepted (RLP dropped a leading zero from r or s):"
     accept "short_scalar" "test-vectors/short_scalar"
     ;;
-  coinbase-attestation-v2-synthetic-anchors)
+  coinbase-attestation-v2-synthetic-anchors|coinbase-country-attestation-v2-synthetic-anchors)
     node "$TAMPER" Prover.toml "$VECTORS/wrong_signer_root.toml" fill signer_list_merkle_root > /dev/null \
       && refuse "wrong_signer_root" "test-vectors/wrong_signer_root" "Signer not in valid list"
     echo ""
@@ -235,8 +289,12 @@ case "$CIRCUIT_REL" in
     refuse "oidc_statement_replay"           "test-vectors/oidc_statement_replay"           "clientData is not a ZKProofport App Attest statement"
     refuse "oidc_statement_magic_swapped"    "test-vectors/oidc_statement_magic_swapped"    "clientData is for another circuit"
     EXTRA_PROOFS="server_action"
+    if [ "$CIRCUIT_REL" = coinbase-country-attestation-v2-synthetic-anchors ]; then
+      country_cases
+      EXTRA_PROOFS="server_action server_exclusion exclusion_accepted"
+    fi
     ;;
-  coinbase-attestation-v2-android-synthetic-anchors)
+  coinbase-attestation-v2-android-synthetic-anchors|coinbase-country-attestation-v2-android-synthetic-anchors)
     node "$TAMPER" Prover.toml "$VECTORS/wrong_signer_root.toml" fill signer_list_merkle_root > /dev/null \
       && refuse "wrong_signer_root" "test-vectors/wrong_signer_root" "Signer not in valid list"
     echo ""
@@ -263,8 +321,9 @@ case "$CIRCUIT_REL" in
     refuse "leaf_signed_by_other_key"    "test-vectors/leaf_signed_by_other_key"    "Leaf certificate is not signed by the attestation key"
     refuse "ca2_sig_high_s"              "test-vectors/ca2_sig_high_s"              "Signature s value is not in canonical form"
     EXTRA_PROOFS="no_action"
+    [ "$CIRCUIT_REL" = coinbase-country-attestation-v2-android-synthetic-anchors ] && android_country_cases
     ;;
-  coinbase-attestation-v2-android-factory-synthetic-anchors)
+  coinbase-attestation-v2-android-factory-synthetic-anchors|coinbase-country-attestation-v2-android-factory-synthetic-anchors)
     node "$TAMPER" Prover.toml "$VECTORS/wrong_signer_root.toml" fill signer_list_merkle_root > /dev/null \
       && refuse "wrong_signer_root" "test-vectors/wrong_signer_root" "Signer not in valid list"
     echo ""
@@ -295,6 +354,7 @@ case "$CIRCUIT_REL" in
     refuse "verdict_for_other_statement" "test-vectors/verdict_for_other_statement" "Integrity verdict nonce is not this statement's"
     refuse "verdict_signed_by_other_key" "test-vectors/verdict_signed_by_other_key" "Integrity verdict is not signed by Google Play"
     EXTRA_PROOFS="no_action"
+    [ "$CIRCUIT_REL" = coinbase-country-attestation-v2-android-factory-synthetic-anchors ] && android_country_cases
     ;;
 esac
 

@@ -47,7 +47,7 @@ MUTANT_PLAY="$CIRCUITS/play-integrity-mutant"
 for d in "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID" "$MUTANT_PLAY"; do
   [ ! -e "$d" ] || { echo "$d exists; remove it (a previous run was interrupted)" >&2; exit 1; }
 done
-trap 'rm -rf "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID" "$MUTANT_PLAY" "$CIRCUITS/oidc-libs-mutant" "$CIRCUITS/coinbase-v2-libs-mutant"' EXIT
+trap 'rm -rf "$MUTANT" "$MUTANT_SIGNER" "$MUTANT_LIB" "$MUTANT_ANDROID" "$MUTANT_PLAY" "$CIRCUITS/oidc-libs-mutant" "$CIRCUITS/coinbase-v2-libs-mutant" "$CIRCUITS/coinbase-country-v2-libs-mutant"' EXIT
 
 repoint() { # file from to
   sed -i.bak "s#\"$2\"#\"$3\"#" "$1" && rm -f "$1.bak"
@@ -81,7 +81,7 @@ while IFS= read -r c || [ -n "$c" ]; do
   # The circuit's own shared library (the token / Coinbase checks moved out of
   # main.nr so each circuit id's packages share them): copied and repointed
   # too, so its asserts can be mutated like the rest.
-  for shared in oidc-libs coinbase-v2-libs; do
+  for shared in oidc-libs coinbase-v2-libs coinbase-country-v2-libs; do
     if grep -q "\"../$shared\"" "$MUTANT/Nargo.toml"; then
       rm -rf "$CIRCUITS/$shared-mutant"
       mkdir -p "$CIRCUITS/$shared-mutant"

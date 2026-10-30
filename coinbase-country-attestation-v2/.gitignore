@@ -1,0 +1,17 @@
+# Build output. Committed: the circuit json, the .srs (2^20 since CA 1 is
+# pinned: 67,109,076 bytes, under GitHub's 100 MiB file limit, so the app
+# downloads it from the release tag like every other circuit's), the
+# .srs.toolchain marker, the vk, the SHA256SUMS digests, and the Solidity
+# verifier (forge compiles every script under ../script, so it must exist in
+# a fresh checkout). Witnesses and proofs stay local.
+target/*
+!target/coinbase_country_attestation_v2.json
+!target/coinbase_country_attestation_v2.srs
+!target/coinbase_country_attestation_v2.srs.toolchain
+!target/SHA256SUMS
+!target/CoinbaseCountryAttestationV2.sol
+!target/vk/
+target/vk/*
+!target/vk/vk
+!target/vk/vk_hash
+!target/vk/SHA256SUMS

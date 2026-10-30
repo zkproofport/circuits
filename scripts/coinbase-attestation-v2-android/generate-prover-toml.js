@@ -43,9 +43,38 @@ const opt = name => {
   return args[i + 1];
 };
 
-const CIRCUIT_TAG = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('coinbase_attestation')));
 const MAGIC = Buffer.from('ZKProofport/AA/1');
 const KYC_SCHEMA = ethers.getBytes('0xf8b05c79f090979bf4a80270aba232dff11a10d9ca55c4f88de95317970f0de9');
+const COUNTRY_SCHEMA = ethers.getBytes('0x1801901fabd0e6189356b4fb52bb0ab855276d84f7ec140839fbd1f6801ca065');
+const tagOf = id => ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes(id)));
+// --circuit coinbase_attestation (default) | coinbase_country_attestation:
+// the same Android signers for the Country v2 packages (227-byte statement with
+// the attestation's country, the country list; --kyc-coinbase for the KYC
+// statement replay). An unknown id is an error, never the KYC row.
+const PROFILES = {
+  coinbase_attestation: { schema: KYC_SCHEMA, clientDataLen: 225, country: false, label: 'Coinbase KYC v2' },
+  coinbase_country_attestation: { schema: COUNTRY_SCHEMA, clientDataLen: 227, country: true, label: 'Coinbase Country v2' },
+};
+const flagOr = (name, fallback) => {
+  const args = process.argv.slice(2);
+  const i = args.indexOf(name);
+  return i === -1 ? fallback : args[i + 1];
+};
+const CIRCUIT_ID = flagOr('--circuit', 'coinbase_attestation');
+if (!Object.prototype.hasOwnProperty.call(PROFILES, CIRCUIT_ID)) {
+  throw new Error(`Unknown --circuit ${CIRCUIT_ID}. Known: ${Object.keys(PROFILES).join(', ')}.`);
+}
+const PROFILE = PROFILES[CIRCUIT_ID];
+const CIRCUIT_TAG = tagOf(CIRCUIT_ID);
+function txCountry(cb) {
+  const raw = ethers.hexlify(Uint8Array.from(cb.raw_transaction.slice(0, Number(cb.tx_length))));
+  return Buffer.from(ethers.getBytes(ethers.Transaction.from(raw).data).subarray(14, 16));
+}
+const countryRows = list => {
+  const rows = list.map(c => (typeof c === 'string' ? Array.from(Buffer.from(c, 'ascii')) : Array.from(c)));
+  while (rows.length < 10) rows.push([0, 0]);
+  return rows;
+};
 const COINBASE_ATTESTER = ethers.getBytes('0x357458739F90461b99789350868CD7CF330Dd7EE');
 const SCOPE_STRING = 'proofport';
 const N_P256 = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
@@ -101,14 +130,18 @@ function main() {
   if (ethers.getAddress(ethers.hexlify(userAddress)) !== wallet.address) {
     throw new Error(`${COINBASE_TOML} is for ${ethers.hexlify(userAddress)}, the key is for ${wallet.address}`);
   }
+  const country = PROFILE.country ? txCountry(cb) : null;
+  if (PROFILE.country && !/^[A-Z]{2}$/.test(country.toString('ascii'))) throw new Error(`the transaction attests '${country.toString('hex')}'`);
+  const otherCountry = PROFILE.country ? (country.toString('ascii') === 'US' ? 'JP' : 'US') : null;
+  const LIST = PROFILE.country ? { list: [otherCountry, country.toString('ascii')], length: 2, included: true } : null;
   const pub = ethers.getBytes(wallet.signingKey.publicKey);
   const scope = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes(SCOPE_STRING)));
   const secret = ethers.getBytes(ethers.keccak256(ethers.concat([userAddress, CIRCUIT_TAG])));
   const nullifier = ethers.getBytes(ethers.keccak256(ethers.concat([secret, scope])));
   const ZERO32 = new Uint8Array(32);
   const signalHash = ethers.getBytes(ethers.solidityPackedKeccak256(
-    ['address', 'string', 'string'], [wallet.address, SCOPE_STRING, 'coinbase_attestation']));
-  const domain = { name: 'ZKProofport Coinbase KYC v2 fixture', version: '1', chainId: 8453, verifyingContract: '0x0000000000000000000000000000000000000001' };
+    ['address', 'string', 'string'], [wallet.address, SCOPE_STRING, CIRCUIT_ID]));
+  const domain = { name: `ZKProofport ${PROFILE.label} fixture`, version: '1', chainId: 8453, verifyingContract: '0x0000000000000000000000000000000000000001' };
   const types = { Join: [{ name: 'member', type: 'address' }, { name: 'nonce', type: 'string' }] };
   const message = { member: wallet.address, nonce: 'coinbase-attestation-v2-android-1' };
   const requests = {
@@ -136,16 +169,24 @@ function main() {
     const t = Buffer.alloc(8);
     t.writeBigUInt64BE(BigInt(o.timestamp ?? attestedAt));
     const cd = Buffer.concat([
-      MAGIC, Buffer.from(CIRCUIT_TAG), Buffer.from(o.wallet ?? userAddress), t,
-      Buffer.from(o.schema ?? KYC_SCHEMA), Buffer.from(COINBASE_ATTESTER), easUid,
+      MAGIC, Buffer.from(o.tag ?? CIRCUIT_TAG), Buffer.from(o.wallet ?? userAddress), t,
+      Buffer.from(o.schema ?? PROFILE.schema), Buffer.from(COINBASE_ATTESTER), easUid,
       Buffer.from([o.revoked ?? 0]), Buffer.from(o.digest ?? req.digest), Buffer.from(o.scope ?? scope),
+      ...(PROFILE.country ? [Buffer.from(o.country ?? country)] : []),
     ]);
-    if (cd.length !== 225) throw new Error(`clientData is ${cd.length} bytes`);
+    if (cd.length !== PROFILE.clientDataLen) throw new Error(`clientData is ${cd.length} bytes`);
     return cd;
   }
 
   /** One Prover TOML; `o.dev` are androidDevice options, `o.chainInputs` a ready chain. */
   function toml(req, o = {}) {
+    const list = o.list ?? LIST;
+    const countryToml = list
+      ? `country_list = [\n${countryRows(list.list).map(r => '  ' + JSON.stringify(r).replace(/,/g, ', ')).join(',\n')},\n]
+country_list_length = ${list.length}
+is_included = ${list.included}
+`
+      : '';
     const at = o.attestedAt ?? attestedAt;
     const cd = o.clientData ?? clientData(req, { timestamp: o.statementTime ?? at });
     let chain;
@@ -203,6 +244,7 @@ play_integrity_key = ${arr(playKey)}`;
     }
     return `# Generated by scripts/coinbase-attestation-v2-android/generate-prover-toml.js
 # Coinbase part: real (from ${path.basename(path.dirname(COINBASE_TOML))}/Prover.toml).
+# Circuit: ${CIRCUIT_ID} (${PROFILE.label}).
 # Statement: SYNTHETIC Android key attestation device (or a real Google chain for real_*).
 # Case: ${o.label ?? 'accepted'}
 
@@ -210,7 +252,7 @@ signal_hash = ${arr(req.signal)}
 domain_separator = ${arr(req.domainSeparator)}
 action_hash = ${arr(req.actionHash)}
 signer_list_merkle_root = ${arr(cb.signer_list_merkle_root)}
-scope = ${arr(scope)}
+${countryToml}scope = ${arr(scope)}
 nullifier = ${arr(nullifier)}
 attested_at = ${at}
 
@@ -280,7 +322,7 @@ ${signerToml}
     client_other_request: { clientData: clientData(ACT, { digest: requests.noAction.digest }) },
     client_other_scope: { clientData: clientData(ACT, { scope: ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('another-scope'))) }) },
     timestamp_changed: { statementTime: attestedAt + 1 },
-    oidc_statement_replay: { clientData: oidcStatement.subarray(0, 225), signed: oidcStatement },
+    oidc_statement_replay: { clientData: oidcStatement.subarray(0, PROFILE.clientDataLen), signed: oidcStatement },
     stmt_signed_by_other_key: { otherSigner: true },
     stmt_high_s: { highS: true },
     other_package: { dev: { packages: ['com.masselabs.zkproofport.debug'] } },
@@ -307,6 +349,20 @@ ${signerToml}
       verdict_unrecognized: { verdict: { recognition: 'UNRECOGNIZED_VERSION' } },
       verdict_for_other_statement: { verdictNonce: crypto.randomBytes(32) },
       verdict_signed_by_other_key: { verdictKey: A.ecKey('prime256v1') },
+    });
+  }
+  if (PROFILE.country) {
+    const kycTomlPath = flagOr('--kyc-coinbase', null);
+    if (!kycTomlPath) throw new Error('--kyc-coinbase <coinbase-attestation Prover.toml> is required for coinbase_country_attestation');
+    const kyc = parseToml(fs.readFileSync(path.resolve(kycTomlPath), 'utf8'));
+    if (Buffer.compare(Buffer.from(kyc.user_address), userAddress) !== 0) throw new Error(`${kycTomlPath} is for another wallet`);
+    const kycTag = tagOf('coinbase_attestation');
+    const kycStatement = Buffer.concat([clientData(ACT, { tag: kycTag, schema: KYC_SCHEMA }).subarray(0, 225), country]);
+    Object.assign(cases, {
+      exclusion_accepted: { list: { list: [otherCountry], length: 1, included: false } },
+      client_other_country: { clientData: clientData(ACT, { country: Buffer.from(otherCountry, 'ascii') }) },
+      kyc_statement_replay: { clientData: kycStatement },
+      not_in_inclusion_list: { list: { list: [otherCountry, 'ZZ'], length: 2, included: true } },
     });
   }
   for (const [name, o] of Object.entries(cases)) {

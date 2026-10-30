@@ -83,3 +83,14 @@ oidc-domain-attestation-android/target/*.srs
 coinbase-attestation-v2-android/target/*.srs
 oidc-domain-attestation-android-factory/target/*.srs
 coinbase-attestation-v2-android-factory/target/*.srs
+# coinbase_country_attestation v2 (2026-10-30): the same acceptance copies,
+# and the Android packages' 2^21 reference strings, published in parts.
+coinbase-country-attestation-v2-synthetic-anchors/
+coinbase-country-attestation-v2-mutant/
+coinbase-country-attestation-v2-android-synthetic-anchors/
+coinbase-country-attestation-v2-android-mutant/
+coinbase-country-attestation-v2-android-factory-synthetic-anchors/
+coinbase-country-attestation-v2-android-factory-mutant/
+coinbase-country-v2-libs-mutant/
+coinbase-country-attestation-v2-android/target/*.srs
+coinbase-country-attestation-v2-android-factory/target/*.srs

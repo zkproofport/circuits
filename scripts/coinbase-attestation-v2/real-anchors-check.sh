@@ -1,7 +1,10 @@
 #!/bin/bash
 # The cases that must run against the REAL circuit, Apple's CA 1 pinned.
 #
-#   scripts/coinbase-attestation-v2/real-anchors-check.sh
+#   scripts/coinbase-attestation-v2/real-anchors-check.sh [package-dir]
+#     package-dir: coinbase-attestation-v2 (default) or
+#     coinbase-country-attestation-v2, which pins the same anchors through
+#     ../statement-signer
 #
 # Every other case runs in the synthetic-anchors copy (make-fixtures.sh), so
 # this is what shows the shipped constants are the ones intended:
@@ -24,11 +27,17 @@ unset NODE_OPTIONS
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CIRCUITS="$(cd "$SCRIPT_DIR/../.." && pwd)"
-REAL="$CIRCUITS/coinbase-attestation-v2"
+PKG="${1:-coinbase-attestation-v2}"
+case "$PKG" in
+  coinbase-attestation-v2) FIXTURES="scripts/coinbase-attestation-v2/make-fixtures.sh" ;;
+  coinbase-country-attestation-v2) FIXTURES="scripts/coinbase-country-attestation-v2/make-fixtures.sh" ;;
+  *) echo "Unknown package '$PKG'. Known: coinbase-attestation-v2, coinbase-country-attestation-v2." >&2; exit 1 ;;
+esac
+REAL="$CIRCUITS/$PKG"
 VECTORS="$REAL/test-vectors"
 
 for f in real_apple_chain real_synthetic_ca real_server_action; do
-  [ -f "$VECTORS/$f.toml" ] || { echo "$VECTORS/$f.toml missing: run scripts/coinbase-attestation-v2/make-fixtures.sh" >&2; exit 1; }
+  [ -f "$VECTORS/$f.toml" ] || { echo "$VECTORS/$f.toml missing: run $FIXTURES" >&2; exit 1; }
 done
 
 cd "$REAL"
