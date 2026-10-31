@@ -49,44 +49,71 @@ if (MAX_DATA !== MAX_DATA_REAL) {
 }
 
 /**
- * Base mainnet (8453). GitcoinVerifier and the scoreV2 schema, as read on
- * 2026-10-28 -- see human-passport-score/README.md, "Sources".
+ * Every GitcoinVerifier Human Passport's production issuer (0x804233b9...88ED)
+ * signs scoreV2 requests for, in issuer-list order: a person records their
+ * score on the chain THEY choose, so a proof must accept each. Read from
+ * passportxyz/passport deployments/onchainInfo.json (7603b7bb3f, 2025-09-03;
+ * the eas-proxy repository it used to live in is gone) and checked on
+ * 2026-10-31: issuer() on each verifier is that key, and every unexpired
+ * scoreV2 attestation on each chain recovers it under that verifier's domain
+ * (Base 284, Arbitrum 52, OP 47, Linea 8, zkSync Era 7, Scroll 4; Shape has
+ * no EAS indexer, three recent issuances checked). Base's 0x16db... is the
+ * verifier Passport's docs named; it carried issuances until 2025-08.
+ * The testnet entries (OP Sepolia, zkSync Sepolia, Ethereum Sepolia) use
+ * another issuer and are not listed.
+ *
+ * The order fixes the tree; HUMAN_PASSPORT_ISSUER_LEAVES in
+ * proofport-app-sdk packages/core/src/circuits.ts holds the same list.
  */
+const PRODUCTION_VERIFIERS = [
+  { chainId: 8453, name: 'Base', verifier: '0x45fA2E93d79Fc44d44b697A94330031b8ccbF68e', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: null },
+  { chainId: 8453, name: 'Base', verifier: '0x16db23c4b99bbC9A6Bf55dF7a787C9AEFD261185', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: null },
+  { chainId: 10, name: 'OP Mainnet', verifier: '0x5e3fDCbCEB58104E8547D5810EB2ED0Fb42eADf4', schema: '0xda0257756063c891659fed52fd36ef7557f7b45d66f59645fd3c3b263b747254', rpc: 'https://mainnet.optimism.io' },
+  { chainId: 42161, name: 'Arbitrum One', verifier: '0x62E6BE350d7b7116936EeD5DeB7951ed3AAfC3c4', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: 'https://arb1.arbitrum.io/rpc' },
+  { chainId: 59144, name: 'Linea', verifier: '0xEd551a95f76E96D60e6fE2bD2D845C3b4A6F8cA8', schema: '0xa15ea01b11913fd412243156b40a8d5102ee9784172f82f9481e4c953fdd516d', rpc: 'https://rpc.linea.build' },
+  { chainId: 534352, name: 'Scroll', verifier: '0x0EDEBAEaE920a6BFCFe7115566ceF5120ED2ff4C', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: 'https://rpc.scroll.io' },
+  { chainId: 360, name: 'Shape', verifier: '0xB2cE7d0470c55be6212e197FF812B8dAE44EFD86', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: 'https://mainnet.shape.network' },
+  { chainId: 324, name: 'zkSync Era', verifier: '0xcC3eab33A77135A09770AcAF7D911E5FEf6622F2', schema: '0xb68405dffc0b727188de5a3af2ecbbc544ab01aef5353409c5006ffff342d143', rpc: 'https://mainnet.era.zksync.io' },
+];
+
+/** Base, where the full-circuit suite's source issuance lives. */
 const BASE = {
   chainId: 8453,
-  // Both GitcoinVerifier deployments on Base that issuances went through, with
-  // the same issuer key: 0x45fA... (in eas-proxy's onchainInfo.json, current)
-  // and 0x16db... (named in Passport's docs; carried the 5,888-byte issuance
-  // below in 2025-08). The fixture issuer list holds one leaf for each.
-  verifiers: ['0x45fA2E93d79Fc44d44b697A94330031b8ccbF68e', '0x16db23c4b99bbC9A6Bf55dF7a787C9AEFD261185'],
+  verifiers: PRODUCTION_VERIFIERS.filter(v => v.chainId === 8453).map(v => v.verifier),
   scoreV2Schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912',
   // The retired `score` schema, used only to show another schema is refused.
   oldScoreSchema: '0x24620f482734b3806102678e4b8bb68baafb1adc1ec29e524bcd69c85f15b915',
 };
 
 /**
- * Real Base issuances the issuer half is checked against, read 2026-10-28:
- *   0x9ca4...  1,184 data bytes, score 23.3860, via 0x45fA (the full-circuit
- *              suite re-signs THIS one's data)
- *   0xafba...    544 bytes, 2 stamps, score 22.0270, via 0x45fA
- *   0x197a...  5,888 bytes, 35 stamps -- the largest of all 17,746 scoreV2
- *              attestations on Base -- via 0x16db
- *   0x3973...  issued 2026-10-30 via 0x45fA, valid at the time it was added
- * Passing a tx hash replaces the first.
+ * Real issuances the issuer half is checked against, one or more per chain:
+ *   Base 0x9ca4...  1,184 data bytes, score 23.3860, via 0x45fA (the
+ *                   full-circuit suite re-signs THIS one's data)
+ *   Base 0xafba...    544 bytes, 2 stamps, via 0x45fA
+ *   Base 0x197a...  5,888 bytes, 35 stamps (the largest on Base), via 0x16db
+ *   Base 0x3973...  issued 2026-10-30 via 0x45fA
+ *   then the newest unexpired issuance on each other chain, read 2026-10-31.
+ * Passing a Base tx hash replaces the first.
  */
 const REAL_TXS = [
-  '0x9ca4f8e96354b108a30cd348250af1189fdc6f28606610577fd136e2a133a38d',
-  '0xafba233fd08e458ac233e973c55bcfcbab70ddb3aa77ab59b7266a04b294631c',
-  '0x197aa6eb673101ed00c377d2f31b1a7d5f41ce99b6c994e332719694150dbaf0',
-  // Issued 2026-10-30, unexpired when added (the newest scoreV2 on Base then).
-  '0x397380089bca063887cf6a62dd12956655d6ea95ca1fd573e509751f9c250a9f',
+  { chainId: 8453, tx: '0x9ca4f8e96354b108a30cd348250af1189fdc6f28606610577fd136e2a133a38d' },
+  { chainId: 8453, tx: '0xafba233fd08e458ac233e973c55bcfcbab70ddb3aa77ab59b7266a04b294631c' },
+  { chainId: 8453, tx: '0x197aa6eb673101ed00c377d2f31b1a7d5f41ce99b6c994e332719694150dbaf0' },
+  { chainId: 8453, tx: '0x397380089bca063887cf6a62dd12956655d6ea95ca1fd573e509751f9c250a9f' },
+  { chainId: 10, tx: '0x64dc2d85c86bbaf86ac8cbfb401363b6d4097e2496e410b7b86a18c73bf5dd0d' },
+  { chainId: 42161, tx: '0x487d38ff07ffa0c3a3a9ffbc6925855c1a04a32cd7618909cdf2fc95ba29200c' },
+  { chainId: 59144, tx: '0x72785006d5d6fa6d2db645bc2355937a10fa02264d0a45be4f9c4bc0cb3bb212' },
+  { chainId: 534352, tx: '0x85da1716dc01101672a485534974053a91e3c5ce2ebaa7b495a2919cf24c9b82' },
+  { chainId: 360, tx: '0x0709dc95bf0038f2b38e4112807fc399f43838dc5d7bdeb1a4a08c488d3ab13a' },
+  { chainId: 324, tx: '0xe1e9848d9d1de6331bbb1236da865bfd64b6857d8d95e2da8463460fd0f1f4c3' },
 ];
 
 /**
- * Root over the real issuer on both Base verifiers (depth 1). The same value is
- * HUMAN_PASSPORT_ISSUER_ROOT in proofport-app-sdk packages/core/src/humanPassport.ts.
+ * Root over the real issuer on every production verifier above (8 leaves,
+ * depth 3). The same value is HUMAN_PASSPORT_ISSUER_ROOT in
+ * proofport-app-sdk packages/core/src/circuits.ts.
  */
-const PRODUCTION_ISSUER_ROOT = '0x3119e41cb3315962b331736523451956c39230dd7cbcad67b335cff512792596';
+const PRODUCTION_ISSUER_ROOT = '0xea6d30773f6870aae6384b8aa91f9eb665c40719e13d98acd9afcbe3d79188c8';
 
 const TEST_ISSUER_KEY = ethers.keccak256(ethers.toUtf8Bytes('zkproofport human_passport_score INSECURE TEST ISSUER'));
 const ATTACKER_ISSUER_KEY = ethers.keccak256(ethers.toUtf8Bytes('zkproofport human_passport_score INSECURE ATTACKER ISSUER'));
@@ -257,25 +284,27 @@ function setWord(data, i, value) {
   return ethers.hexlify(b);
 }
 
-async function loadIssuance(provider, txHash) {
+async function loadIssuance(providers, { chainId, tx: txHash }) {
+  const provider = providers[chainId];
   const iface = new ethers.Interface(VERIFIER_ABI);
   const tx = await provider.getTransaction(txHash);
-  if (!tx) throw new Error(`tx not found on Base: ${txHash}`);
-  const verifier = BASE.verifiers.find(a => a.toLowerCase() === tx.to.toLowerCase());
-  if (!verifier) throw new Error(`tx.to ${tx.to} is not a known Base GitcoinVerifier (${BASE.verifiers.join(', ')})`);
+  if (!tx) throw new Error(`tx not found on chain ${chainId}: ${txHash}`);
+  const listed = PRODUCTION_VERIFIERS.find(p => p.chainId === chainId && p.verifier.toLowerCase() === tx.to.toLowerCase());
+  if (!listed) throw new Error(`tx.to ${tx.to} is not a listed GitcoinVerifier on chain ${chainId}`);
+  const verifier = listed.verifier;
   const parsed = iface.parseTransaction({ data: tx.data, value: tx.value });
   if (parsed.name !== 'verifyAndAttest') throw new Error(`not verifyAndAttest: ${parsed.name}`);
   const [request, v, r, s] = parsed.args;
   if (request.multiAttestationRequest.length !== 1) throw new Error(`expected 1 MultiAttestationRequest, got ${request.multiAttestationRequest.length}`);
   const multi = request.multiAttestationRequest[0];
   if (multi.data.length !== 1) throw new Error(`expected 1 AttestationRequestData, got ${multi.data.length}`);
-  if (multi.schema.toLowerCase() !== BASE.scoreV2Schema) throw new Error(`schema ${multi.schema} is not scoreV2`);
+  if (multi.schema.toLowerCase() !== listed.schema.toLowerCase()) throw new Error(`schema ${multi.schema} is not chain ${chainId}'s scoreV2`);
   const e = multi.data[0];
   const req = {
     schema: multi.schema, recipient: e.recipient, expirationTime: e.expirationTime, revocable: e.revocable,
     refUID: e.refUID, data: e.data, value: e.value, nonce: request.nonce, fee: request.fee,
   };
-  const domain = passportDomainSeparator(BASE.chainId, verifier);
+  const domain = passportDomainSeparator(chainId, verifier);
   const sig = ethers.Signature.from({ r, s, v });
   const pubHex = ethers.SigningKey.recoverPublicKey(passportDigest(domain, req), sig);
   const issuer = ethers.computeAddress(pubHex);
@@ -285,7 +314,7 @@ async function loadIssuance(provider, txHash) {
   if (head.decimals !== 4n) throw new Error(`${txHash}: data has ${head.decimals} decimals`);
   const pub = ethers.getBytes(pubHex);
   return {
-    txHash, verifier, domain, req, head, issuer,
+    txHash, chainId, verifier, domain, req, head, issuer,
     issuerSig: sig64(sig), issuerPub: { x: pub.slice(1, 33), y: pub.slice(33, 65) },
     dataLen: ethers.getBytes(req.data).length,
   };
@@ -293,10 +322,13 @@ async function loadIssuance(provider, txHash) {
 
 async function main() {
   const txs = REAL_TXS.slice();
-  if (process.argv[2]) txs[0] = process.argv[2];
-  const provider = new ethers.JsonRpcProvider(readRpcUrl());
+  if (process.argv[2]) txs[0] = { chainId: 8453, tx: process.argv[2] };
+  const providers = {};
+  for (const p of PRODUCTION_VERIFIERS) {
+    providers[p.chainId] ??= new ethers.JsonRpcProvider(p.rpc ?? readRpcUrl(), p.chainId, { staticNetwork: true });
+  }
   const issuances = [];
-  for (const h of txs) issuances.push(await loadIssuance(provider, h));
+  for (const h of txs) issuances.push(await loadIssuance(providers, h));
   const first = issuances[0];
   const txHash = first.txHash;
   const realReq = first.req;
@@ -314,17 +346,17 @@ async function main() {
   const wallet = new ethers.Wallet(TEST_WALLET_KEY);
   const other = new ethers.Wallet(OTHER_WALLET_KEY);
 
-  // The issuer list: the real issuer on each Base verifier, then the test
-  // issuer on the current one. Three leaves, padded to four: depth 2.
+  // The issuer list: the real issuer on each production verifier, then the test
+  // issuer on Base's current verifier. Nine leaves, padded to sixteen: depth 4.
   const leaves = [
-    ...BASE.verifiers.map(v => issuerLeaf(realIssuer, passportDomainSeparator(BASE.chainId, v), BASE.scoreV2Schema)),
+    ...PRODUCTION_VERIFIERS.map(p => issuerLeaf(realIssuer, passportDomainSeparator(p.chainId, p.verifier), p.schema)),
     issuerLeaf(ethers.computeAddress(testIssuer.publicKey), domain, BASE.scoreV2Schema),
   ];
   // The production list: the real issuer on each Base verifier, nothing else.
   // Its root is what @zkproofport-app/core pins (HUMAN_PASSPORT_ISSUER_ROOT);
   // the real issuances below prove against it, so a drift between the two
   // fails here instead of on a phone.
-  const prodLeaves = leaves.slice(0, BASE.verifiers.length);
+  const prodLeaves = leaves.slice(0, PRODUCTION_VERIFIERS.length);
   const prodRoot = merkle(prodLeaves, 0).root;
   if (prodRoot !== PRODUCTION_ISSUER_ROOT) {
     throw new Error(`production issuer root ${prodRoot} != PRODUCTION_ISSUER_ROOT ${PRODUCTION_ISSUER_ROOT}`);
@@ -334,7 +366,7 @@ async function main() {
 
   for (const i of issuances) {
     console.log(`real issuance ${i.txHash}`);
-    console.log(`  via ${i.verifier}, issuer ${i.issuer} == issuer() on chain`);
+    console.log(`  chain ${i.chainId} via ${i.verifier}, issuer ${i.issuer} == issuer() on chain`);
     console.log(`  score ${i.head.score} scorer ${i.head.scorerId} threshold ${i.head.threshold}, data ${i.dataLen} bytes (cap ${MAX_DATA}), expires ${i.req.expirationTime}`);
   }
   console.log('issuer list root:', merkle(leaves, 0).root, `(${leaves.length} leaves)`);
@@ -347,13 +379,13 @@ async function main() {
   //      derivations of the first refused.
   const realCases = [];
   issuances.forEach((i, n) => {
-    const leafIndex = BASE.verifiers.findIndex(v => v.toLowerCase() === i.verifier.toLowerCase());
+    const leafIndex = PRODUCTION_VERIFIERS.findIndex(p => p.chainId === i.chainId && p.verifier.toLowerCase() === i.verifier.toLowerCase());
     const real = {
       sourceTx: i.txHash, domain: i.domain, req: i.req, issuerSig: i.issuerSig, issuerPub: i.issuerPub,
       tree: merkle(prodLeaves, leafIndex), leafIndex, minScore: i.head.score, scorerId: i.head.scorerId,
       now: i.req.expirationTime - 90n * DAY + DAY,
     };
-    const name = `real_${n}_${i.dataLen}b`;
+    const name = `real_${n}_chain${i.chainId}_${i.dataLen}b`;
     fs.writeFileSync(path.join(REAL_VECTORS, `${name}.toml`), realToml(real, 'real issuance, must be ACCEPTED'));
     realCases.push(`${name}\tACCEPT`);
     if (n === 0) {

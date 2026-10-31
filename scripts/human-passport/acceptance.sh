@@ -84,7 +84,7 @@ while IFS=$'\t' read -r name expected; do
 done < "$VECTORS/cases.tsv"
 
 echo ""
-echo "Real Base issuance, real issuer signature (real-issuer-check):"
+echo "Real issuances on every listed chain, real issuer signature (real-issuer-check):"
 while IFS=$'\t' read -r name expected; do
   [ -n "$name" ] || continue
   run_case "$REAL_DIR" "$name" "test-vectors/$name" "$expected"

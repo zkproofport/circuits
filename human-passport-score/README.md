@@ -39,17 +39,32 @@ zkSync Era and Shape (`eth_call 0x1d143848` on each chain's verifier from
 onchainInfo.json, 2026-10-28). The testnets (OP Sepolia, Ethereum Sepolia,
 zkSync Sepolia) list a different issuer, `0x5f603Ed9...B167`, in the same file.
 
-Base mainnet (8453), the chain this circuit is built against:
+A person records their score on the chain they choose, so the issuer list
+holds every production GitcoinVerifier the issuer signs for, in this order
+(leaf index, chain, verifier, scoreV2 schema; source: passportxyz/passport
+`deployments/onchainInfo.json` at 7603b7bb3f):
 
-| | |
-|---|---|
-| GitcoinVerifier (current, in onchainInfo.json) | `0x45fA2E93d79Fc44d44b697A94330031b8ccbF68e` |
-| GitcoinVerifier (in Passport's docs; still allowed by the attester; same issuer; carried the 2025-08 issuance below) | `0x16db23c4b99bbC9A6Bf55dF7a787C9AEFD261185` |
-| GitcoinAttester (the EAS attester) | `0xCc90105D4A2aa067ee768120AdA19886021dF422` |
-| GitcoinResolver | `0x90E2C4472Df225e8D31f44725B75FFaA244d5D33` |
-| GitcoinPassportDecoder | `0xaa24a127d10C68C8F9Ac06199AA606953cD82eE7` |
-| scoreV2 schema | `0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912` |
-| schema string | `bool passing_score, uint8 score_decimals, uint128 scorer_id, uint32 score, uint32 threshold, tuple(string provider, uint256 score)[] stamps` (revocable) |
+| # | Chain (id) | GitcoinVerifier | scoreV2 schema |
+|---|---|---|---|
+| 0 | Base (8453) | `0x45fA2E93d79Fc44d44b697A94330031b8ccbF68e` | `0x1f3dce65...a912` |
+| 1 | Base (8453), the verifier Passport's docs named; issuances until 2025-08 | `0x16db23c4b99bbC9A6Bf55dF7a787C9AEFD261185` | `0x1f3dce65...a912` |
+| 2 | OP Mainnet (10) | `0x5e3fDCbCEB58104E8547D5810EB2ED0Fb42eADf4` | `0xda025775...7254` |
+| 3 | Arbitrum One (42161) | `0x62E6BE350d7b7116936EeD5DeB7951ed3AAfC3c4` | `0x1f3dce65...a912` |
+| 4 | Linea (59144) | `0xEd551a95f76E96D60e6fE2bD2D845C3b4A6F8cA8` | `0xa15ea01b...516d` |
+| 5 | Scroll (534352) | `0x0EDEBAEaE920a6BFCFe7115566ceF5120ED2ff4C` | `0x1f3dce65...a912` |
+| 6 | Shape (360) | `0xB2cE7d0470c55be6212e197FF812B8dAE44EFD86` | `0x1f3dce65...a912` |
+| 7 | zkSync Era (324) | `0xcC3eab33A77135A09770AcAF7D911E5FEf6622F2` | `0xb68405df...d143` |
+
+Root: `0xea6d30773f6870aae6384b8aa91f9eb665c40719e13d98acd9afcbe3d79188c8`
+(8 leaves, depth 3). Checked 2026-10-31: `issuer()` on each verifier is the
+key above, and every unexpired scoreV2 attestation on each chain recovers it
+under its verifier's domain (Base 284, Arbitrum 52, OP 47, Linea 8, zkSync Era
+7, Scroll 4; Shape has no EAS indexer, recent issuances checked). The real
+issuance fixtures include one per chain, proved against this root.
+
+Schema string (all chains): `bool passing_score, uint8 score_decimals, uint128
+scorer_id, uint32 score, uint32 threshold, tuple(string provider, uint256
+score)[] stamps` (revocable).
 
 Measured on Base through `base.easscan.org/graphql`, 2026-10-28: 17,746
 scoreV2 attestations since 2025-03-13, **0 revoked**, 307 issued in the last
@@ -115,8 +130,8 @@ giwa_attestation's layout, unchanged.
 
 **Issuer list construction.** Leaves in list order, padded with `bytes32(0)` to
 a power of two, parent = `keccak256(left ++ right)`, depth at most 8. The root
-the verifier publishes for Base is over the issuer on both Base verifiers
-(the fixtures add a third, test, leaf).
+the verifier publishes is over the eight production leaves above (the
+fixtures add a ninth, test, leaf).
 
 ### What the verifier (our core/SDK, or a contract) must still check
 
