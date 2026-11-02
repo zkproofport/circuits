@@ -39,28 +39,40 @@ zkSync Era and Shape (`eth_call 0x1d143848` on each chain's verifier from
 onchainInfo.json, 2026-10-28). The testnets (OP Sepolia, Ethereum Sepolia,
 zkSync Sepolia) list a different issuer, `0x5f603Ed9...B167`, in the same file.
 
-A person records their score on the chain they choose, so the issuer list
-holds every production GitcoinVerifier the issuer signs for, in this order
+A person records their score on the chain they choose. The issuer list holds
+one GitcoinVerifier for each chain Human Passport's "Go Onchain" screen offers
+-- Base, Linea, Arbitrum One, OP Mainnet, zkSync Era, Scroll -- in this order
 (leaf index, chain, verifier, scoreV2 schema; source: passportxyz/passport
 `deployments/onchainInfo.json` at 7603b7bb3f):
 
 | # | Chain (id) | GitcoinVerifier | scoreV2 schema |
 |---|---|---|---|
 | 0 | Base (8453) | `0x45fA2E93d79Fc44d44b697A94330031b8ccbF68e` | `0x1f3dce65...a912` |
-| 1 | Base (8453), the verifier Passport's docs named; issuances until 2025-08 | `0x16db23c4b99bbC9A6Bf55dF7a787C9AEFD261185` | `0x1f3dce65...a912` |
-| 2 | OP Mainnet (10) | `0x5e3fDCbCEB58104E8547D5810EB2ED0Fb42eADf4` | `0xda025775...7254` |
-| 3 | Arbitrum One (42161) | `0x62E6BE350d7b7116936EeD5DeB7951ed3AAfC3c4` | `0x1f3dce65...a912` |
-| 4 | Linea (59144) | `0xEd551a95f76E96D60e6fE2bD2D845C3b4A6F8cA8` | `0xa15ea01b...516d` |
-| 5 | Scroll (534352) | `0x0EDEBAEaE920a6BFCFe7115566ceF5120ED2ff4C` | `0x1f3dce65...a912` |
-| 6 | Shape (360) | `0xB2cE7d0470c55be6212e197FF812B8dAE44EFD86` | `0x1f3dce65...a912` |
-| 7 | zkSync Era (324) | `0xcC3eab33A77135A09770AcAF7D911E5FEf6622F2` | `0xb68405df...d143` |
+| 1 | OP Mainnet (10) | `0x5e3fDCbCEB58104E8547D5810EB2ED0Fb42eADf4` | `0xda025775...7254` |
+| 2 | Arbitrum One (42161) | `0x62E6BE350d7b7116936EeD5DeB7951ed3AAfC3c4` | `0x1f3dce65...a912` |
+| 3 | Linea (59144) | `0xEd551a95f76E96D60e6fE2bD2D845C3b4A6F8cA8` | `0xa15ea01b...516d` |
+| 4 | Scroll (534352) | `0x0EDEBAEaE920a6BFCFe7115566ceF5120ED2ff4C` | `0x1f3dce65...a912` |
+| 5 | zkSync Era (324) | `0xcC3eab33A77135A09770AcAF7D911E5FEf6622F2` | `0xb68405df...d143` |
 
-Root: `0xea6d30773f6870aae6384b8aa91f9eb665c40719e13d98acd9afcbe3d79188c8`
-(8 leaves, depth 3). Checked 2026-10-31: `issuer()` on each verifier is the
-key above, and every unexpired scoreV2 attestation on each chain recovers it
-under its verifier's domain (Base 284, Arbitrum 52, OP 47, Linea 8, zkSync Era
-7, Scroll 4; Shape has no EAS indexer, recent issuances checked). The real
-issuance fixtures include one per chain, proved against this root.
+Root: `0xebafaf92d62644b16a0d4cdffb25c0fa8b911d760fc4efb5ae3965487b0072f5`
+(6 leaves padded to 8, depth 3). Checked 2026-10-31: `issuer()` on each
+verifier is the key above, and every unexpired scoreV2 attestation on each
+chain recovers it under its verifier's domain (Base 284, Arbitrum 52, OP 47,
+Linea 8, zkSync Era 7, Scroll 4). On 2026-11-02 all 284 unexpired Base scores
+recovered under `0x45fA...`'s domain and none under the other Base verifier
+onchainInfo.json lists (`0x16db...`, last issuance 2025-08), so that one is
+not a leaf. The real issuance fixtures include one per chain, accepted under
+this root.
+
+**Linea and Verax.** Passport's screen labels Linea "Attestation on Verax".
+The same `verifyAndAttest` call on Linea's GitcoinVerifier writes the score to
+EAS on Linea and, through `GitcoinVeraxPortal` (`0xCAa9E817...5d5D`), to
+Verax's AttestationRegistry (scoreV2 schema `0xc056bae6...5f9f`): one
+transaction, both events. Checked 2026-11-02 over the last 200 days: 53
+issuances in each registry, the same (recipient, time) pairs, 8 of 8
+unexpired. The circuit checks the issuer's signature over the request, not
+either registry, so the leaf is the GitcoinVerifier's domain in both cases,
+and a lookup through Linea's EAS index finds every score Verax holds.
 
 Schema string (all chains): `bool passing_score, uint8 score_decimals, uint128
 scorer_id, uint32 score, uint32 threshold, tuple(string provider, uint256
@@ -122,7 +134,7 @@ and nullifier in `src/main.nr`:
 | 5 | `scope` | 32 | Sybil domain |
 | 6 | `nullifier` | 32 | see 7 above |
 | 7 | `min_score` | 1 | threshold x 10^4 (20.0 = `200000`) |
-| 8 | `scorer_id` | 1 | Passport scorer the score belongs to (Base onchain: 335) |
+| 8 | `scorer_id` | 1 | Passport scorer the score belongs to (335 on every listed chain) |
 | 9 | `now` | 1 | unix seconds |
 
 Offsets: 0, 32, 64, 96, 128, 160, 192, 193, 194 -- the first six are
@@ -130,8 +142,8 @@ giwa_attestation's layout, unchanged.
 
 **Issuer list construction.** Leaves in list order, padded with `bytes32(0)` to
 a power of two, parent = `keccak256(left ++ right)`, depth at most 8. The root
-the verifier publishes is over the eight production leaves above (the
-fixtures add a ninth, test, leaf).
+the verifier publishes is over the six production leaves above (the
+fixtures add a seventh, test, leaf).
 
 ### What the verifier (our core/SDK, or a contract) must still check
 
@@ -199,10 +211,12 @@ work), pinned toolchain (nargo 1.0.0-beta.19, bb 4.2.0-aztecnr-rc.2):
 | `.srs` (generate_srs.sh) | 134,217,940 bytes, published in parts (over GitHub's 100 MiB file limit) |
 | committed artefacts | built by CI (`build-circuits.yml`): json, `vk/`, `HumanPassportScore.sol`, `SHA256SUMS`, and the `.srs` in 64 MiB parts (`.srs.part0`, `.part1`, `.part2`) |
 
-Acceptance (`scripts/build.sh human-passport-score`): 39 passed, 0 failed --
-32 full-circuit cases (5 accepted, 27 refused each with its named message),
-6 real-issuer cases (3 real Base issuances accepted, 3 derivations refused),
-1 proof generated and verified. Mutation check: 7 of 7 guards, when deleted,
+Acceptance (`scripts/build.sh human-passport-score`, 2026-11-02): 47 passed,
+0 failed -- 32 full-circuit cases (5 accepted, 27 refused each with its named
+message), 13 real-issuer cases (8 real issuances on the six listed chains
+accepted, 3 derivations refused, 2 real issuances through retired verifiers
+refused), the real Linea issuance's issuer half proved and verified, and 1
+full-circuit proof generated and verified. Mutation check: 7 of 7 guards, when deleted,
 let their case through. Library unit tests (`nargo test` in
 `human-passport-libs`): 6 passed.
 
@@ -214,19 +228,22 @@ scripts/human-passport/acceptance.sh          # (run by the post-build hook)
 scripts/human-passport/make-fixtures.sh [tx]  # regenerate (needs a Base RPC)
 ```
 
-There are two kinds of fixture, both from real Base issuances
+There are two kinds of fixture, both from real issuances
 (`scripts/human-passport/generate-fixtures.js`):
 
 - **`../human-passport-real-issuer-check/`** -- a small program running the same
-  `verify_score_statement` on three REAL `verifyAndAttest` transactions: the
-  real issuer signature, the real data (1,184 bytes via `0x45fA`; 544 bytes,
-  2 stamps; and the largest on Base, 5,888 bytes via `0x16db`). Before writing
-  them the generator recovers the issuer and compares it with `issuer()` on
-  chain. Executed, not proved; not a shipped circuit.
+  `verify_score_statement` on REAL `verifyAndAttest` transactions, at least one
+  per listed chain, under the production root: the real issuer signature and
+  the real data. Two real issuances through verifiers outside the list (Base
+  `0x16db`, 5,888 bytes; a Shape issuance, scorer 7922) must be refused with
+  "Issuer not in valid list". Before writing them the generator recovers the
+  issuer and compares it with `issuer()` on chain. The Linea issuance
+  (`proved_case`) is also proved and verified; the rest are executed. Not a
+  shipped circuit.
 - **The full circuit** -- the first issuance's real `data`, re-signed by an
   INSECURE TEST ISSUER for an INSECURE TEST WALLET (keys derived from public
   strings in the generator), under an issuer list that holds the real issuer
-  on both Base verifiers plus the test issuer. Every refusal case changes one
+  on every listed verifier plus the test issuer. Every refusal case changes one
   thing relative to the accepted fixture and must be refused with its named
   message; refused for another reason counts as a failure.
 

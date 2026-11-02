@@ -7,10 +7,12 @@
 #    must be refused passes only when it is refused FOR THE STATED REASON;
 #    refused for another reason is a failure, because it would hide the guard
 #    being gone.
-# 2. real-issuer-check: the same issuer library run on a real Base issuance
-#    (real issuer signature, real data) -- accepted -- and two derivations of
-#    it -- refused.
-# 3. One real proof of the action fixture, verified.
+# 2. real-issuer-check: the same issuer library run on real issuances on every
+#    listed chain (real issuer signature, real data) -- accepted --, three
+#    derivations of one -- refused --, and real issuances through retired
+#    verifiers (Base 0x16db, Shape) -- refused, issuer not in the list.
+# 3. A proof of one real issuance's issuer half (proved_case: Linea), verified.
+# 4. One real proof of the action fixture, verified.
 #
 # Fixtures are gitignored; when missing they are regenerated (network needed).
 set -u
@@ -89,6 +91,23 @@ while IFS=$'\t' read -r name expected; do
   [ -n "$name" ] || continue
   run_case "$REAL_DIR" "$name" "test-vectors/$name" "$expected"
 done < "$REAL_DIR/test-vectors/cases.tsv"
+
+echo ""
+echo "Proof of a real issuance's issuer half (real-issuer-check, the case in proved_case):"
+PROVED_REAL="$(tr -d '[:space:]' < "$REAL_DIR/test-vectors/proved_case" 2>/dev/null)"
+REAL_JSON="$REAL_DIR/target/human_passport_real_issuer_check.json"
+mkdir -p "$REAL_DIR/target/proof" "$REAL_DIR/target/vk"
+if [ -n "$PROVED_REAL" ] && [ -f "$REAL_DIR/target/witness_${PROVED_REAL}.gz" ] \
+   && bb write_vk -b "$REAL_JSON" -o "$REAL_DIR/target/vk" -t evm > "$LOGS/prove_real.log" 2>&1 \
+   && bb prove -b "$REAL_JSON" -w "$REAL_DIR/target/witness_${PROVED_REAL}.gz" -k "$REAL_DIR/target/vk/vk" -o "$REAL_DIR/target/proof" -t evm >> "$LOGS/prove_real.log" 2>&1 \
+   && bb verify -p "$REAL_DIR/target/proof/proof" -i "$REAL_DIR/target/proof/public_inputs" -k "$REAL_DIR/target/vk/vk" -t evm >> "$LOGS/prove_real.log" 2>&1; then
+  echo "  ok       $PROVED_REAL proved and verified against the production root"
+  PASSED=$((PASSED + 1))
+else
+  echo "  FAILED   prove/verify of '$PROVED_REAL'"
+  tail -12 "$LOGS/prove_real.log" 2>/dev/null | sed 's/^/           /'
+  FAILED=$((FAILED + 1))
+fi
 
 echo ""
 echo "Proof (action mode):"

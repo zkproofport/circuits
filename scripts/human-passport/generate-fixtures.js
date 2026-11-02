@@ -49,37 +49,50 @@ if (MAX_DATA !== MAX_DATA_REAL) {
 }
 
 /**
- * Every GitcoinVerifier Human Passport's production issuer (0x804233b9...88ED)
- * signs scoreV2 requests for, in issuer-list order: a person records their
- * score on the chain THEY choose, so a proof must accept each. Read from
- * passportxyz/passport deployments/onchainInfo.json (7603b7bb3f, 2025-09-03;
- * the eas-proxy repository it used to live in is gone) and checked on
- * 2026-10-31: issuer() on each verifier is that key, and every unexpired
- * scoreV2 attestation on each chain recovers it under that verifier's domain
- * (Base 284, Arbitrum 52, OP 47, Linea 8, zkSync Era 7, Scroll 4; Shape has
- * no EAS indexer, three recent issuances checked). Base's 0x16db... is the
- * verifier Passport's docs named; it carried issuances until 2025-08.
- * The testnet entries (OP Sepolia, zkSync Sepolia, Ethereum Sepolia) use
- * another issuer and are not listed.
+ * The GitcoinVerifiers a proof accepts, in issuer-list order: one per chain
+ * Human Passport's own "Go Onchain" screen offers (Base, OP Mainnet, Arbitrum
+ * One, Linea, Scroll, zkSync Era; user decision 2026-11-02). A person records
+ * their score on the chain THEY choose. Addresses and schemas from
+ * passportxyz/passport deployments/onchainInfo.json (7603b7bb3f); issuer() on
+ * each is the production issuer 0x804233b9...88ED.
+ *
+ * Linea: Passport's screen calls it "Attestation on Verax". The same
+ * verifyAndAttest call on 0xEd55... writes the score to EAS on Linea AND to
+ * Verax (GitcoinVeraxPortal 0xCAa9..., scoreV2 schema 0xc056...): checked
+ * 2026-11-02, 53 of 53 issuances of the last 200 days are in both, same
+ * recipient and time, 8 of 8 unexpired. The issuer signs the request, not the
+ * registry, so the leaf is the GitcoinVerifier's domain either way.
  *
  * The order fixes the tree; HUMAN_PASSPORT_ISSUER_LEAVES in
  * proofport-app-sdk packages/core/src/circuits.ts holds the same list.
  */
 const PRODUCTION_VERIFIERS = [
   { chainId: 8453, name: 'Base', verifier: '0x45fA2E93d79Fc44d44b697A94330031b8ccbF68e', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: null },
-  { chainId: 8453, name: 'Base', verifier: '0x16db23c4b99bbC9A6Bf55dF7a787C9AEFD261185', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: null },
   { chainId: 10, name: 'OP Mainnet', verifier: '0x5e3fDCbCEB58104E8547D5810EB2ED0Fb42eADf4', schema: '0xda0257756063c891659fed52fd36ef7557f7b45d66f59645fd3c3b263b747254', rpc: 'https://mainnet.optimism.io' },
   { chainId: 42161, name: 'Arbitrum One', verifier: '0x62E6BE350d7b7116936EeD5DeB7951ed3AAfC3c4', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: 'https://arb1.arbitrum.io/rpc' },
   { chainId: 59144, name: 'Linea', verifier: '0xEd551a95f76E96D60e6fE2bD2D845C3b4A6F8cA8', schema: '0xa15ea01b11913fd412243156b40a8d5102ee9784172f82f9481e4c953fdd516d', rpc: 'https://rpc.linea.build' },
   { chainId: 534352, name: 'Scroll', verifier: '0x0EDEBAEaE920a6BFCFe7115566ceF5120ED2ff4C', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: 'https://rpc.scroll.io' },
-  { chainId: 360, name: 'Shape', verifier: '0xB2cE7d0470c55be6212e197FF812B8dAE44EFD86', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: 'https://mainnet.shape.network' },
   { chainId: 324, name: 'zkSync Era', verifier: '0xcC3eab33A77135A09770AcAF7D911E5FEf6622F2', schema: '0xb68405dffc0b727188de5a3af2ecbbc544ab01aef5353409c5006ffff342d143', rpc: 'https://mainnet.era.zksync.io' },
+];
+
+/**
+ * Verifiers the same issuer signs for that are NOT in the list. Real issuances
+ * through them are loaded only to show the circuit refuses them:
+ *   Base 0x16db...  the verifier Passport's docs named; its last issuance was
+ *                   2025-08, and none of Base's 284 unexpired scores recovers
+ *                   under its domain (checked 2026-11-02).
+ *   Shape           not on Passport's "Go Onchain" screen (dropped 2026-11-02);
+ *                   every Shape score names scorer 7922.
+ */
+const RETIRED_VERIFIERS = [
+  { chainId: 8453, name: 'Base (retired verifier)', verifier: '0x16db23c4b99bbC9A6Bf55dF7a787C9AEFD261185', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: null },
+  { chainId: 360, name: 'Shape', verifier: '0xB2cE7d0470c55be6212e197FF812B8dAE44EFD86', schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912', rpc: 'https://mainnet.shape.network' },
 ];
 
 /** Base, where the full-circuit suite's source issuance lives. */
 const BASE = {
   chainId: 8453,
-  verifiers: PRODUCTION_VERIFIERS.filter(v => v.chainId === 8453).map(v => v.verifier),
+  verifier: '0x45fA2E93d79Fc44d44b697A94330031b8ccbF68e',
   scoreV2Schema: '0x1f3dce6501d8aad23563c0cf4f0c32264aed9311cb050056ebf72774f89ba912',
   // The retired `score` schema, used only to show another schema is refused.
   oldScoreSchema: '0x24620f482734b3806102678e4b8bb68baafb1adc1ec29e524bcd69c85f15b915',
@@ -90,30 +103,43 @@ const BASE = {
  *   Base 0x9ca4...  1,184 data bytes, score 23.3860, via 0x45fA (the
  *                   full-circuit suite re-signs THIS one's data)
  *   Base 0xafba...    544 bytes, 2 stamps, via 0x45fA
- *   Base 0x197a...  5,888 bytes, 35 stamps (the largest on Base), via 0x16db
  *   Base 0x3973...  issued 2026-10-30 via 0x45fA
- *   then the newest unexpired issuance on each other chain, read 2026-10-31.
+ *   then the newest unexpired issuance on each other chain, read 2026-10-31
+ *   (Linea 0x7278..., also on Verax, expires 2027-01-15).
  * Passing a Base tx hash replaces the first.
  */
 const REAL_TXS = [
   { chainId: 8453, tx: '0x9ca4f8e96354b108a30cd348250af1189fdc6f28606610577fd136e2a133a38d' },
   { chainId: 8453, tx: '0xafba233fd08e458ac233e973c55bcfcbab70ddb3aa77ab59b7266a04b294631c' },
-  { chainId: 8453, tx: '0x197aa6eb673101ed00c377d2f31b1a7d5f41ce99b6c994e332719694150dbaf0' },
   { chainId: 8453, tx: '0x397380089bca063887cf6a62dd12956655d6ea95ca1fd573e509751f9c250a9f' },
   { chainId: 10, tx: '0x64dc2d85c86bbaf86ac8cbfb401363b6d4097e2496e410b7b86a18c73bf5dd0d' },
   { chainId: 42161, tx: '0x487d38ff07ffa0c3a3a9ffbc6925855c1a04a32cd7618909cdf2fc95ba29200c' },
   { chainId: 59144, tx: '0x72785006d5d6fa6d2db645bc2355937a10fa02264d0a45be4f9c4bc0cb3bb212' },
   { chainId: 534352, tx: '0x85da1716dc01101672a485534974053a91e3c5ce2ebaa7b495a2919cf24c9b82' },
-  { chainId: 360, tx: '0x0709dc95bf0038f2b38e4112807fc399f43838dc5d7bdeb1a4a08c488d3ab13a' },
   { chainId: 324, tx: '0xe1e9848d9d1de6331bbb1236da865bfd64b6857d8d95e2da8463460fd0f1f4c3' },
 ];
 
 /**
- * Root over the real issuer on every production verifier above (8 leaves,
- * depth 3). The same value is HUMAN_PASSPORT_ISSUER_ROOT in
+ * Real issuances through a retired verifier: each must be REFUSED by the
+ * production list ("Issuer not in valid list") although its issuer signature
+ * is genuine.
+ *   Base 0x197a...  5,888 bytes, 35 stamps (the largest on Base), via 0x16db
+ *   Shape 0x0709... scorer 7922
+ */
+const RETIRED_TXS = [
+  { chainId: 8453, tx: '0x197aa6eb673101ed00c377d2f31b1a7d5f41ce99b6c994e332719694150dbaf0' },
+  { chainId: 360, tx: '0x0709dc95bf0038f2b38e4112807fc399f43838dc5d7bdeb1a4a08c488d3ab13a' },
+];
+
+/** The real issuance the issuer-half proof is generated for (acceptance.sh). */
+const PROVED_REAL_TX = '0x72785006d5d6fa6d2db645bc2355937a10fa02264d0a45be4f9c4bc0cb3bb212';
+
+/**
+ * Root over the real issuer on every production verifier above (6 leaves,
+ * padded to 8, depth 3). The same value is HUMAN_PASSPORT_ISSUER_ROOT in
  * proofport-app-sdk packages/core/src/circuits.ts.
  */
-const PRODUCTION_ISSUER_ROOT = '0xea6d30773f6870aae6384b8aa91f9eb665c40719e13d98acd9afcbe3d79188c8';
+const PRODUCTION_ISSUER_ROOT = '0xebafaf92d62644b16a0d4cdffb25c0fa8b911d760fc4efb5ae3965487b0072f5';
 
 const TEST_ISSUER_KEY = ethers.keccak256(ethers.toUtf8Bytes('zkproofport human_passport_score INSECURE TEST ISSUER'));
 const ATTACKER_ISSUER_KEY = ethers.keccak256(ethers.toUtf8Bytes('zkproofport human_passport_score INSECURE ATTACKER ISSUER'));
@@ -289,8 +315,8 @@ async function loadIssuance(providers, { chainId, tx: txHash }) {
   const iface = new ethers.Interface(VERIFIER_ABI);
   const tx = await provider.getTransaction(txHash);
   if (!tx) throw new Error(`tx not found on chain ${chainId}: ${txHash}`);
-  const listed = PRODUCTION_VERIFIERS.find(p => p.chainId === chainId && p.verifier.toLowerCase() === tx.to.toLowerCase());
-  if (!listed) throw new Error(`tx.to ${tx.to} is not a listed GitcoinVerifier on chain ${chainId}`);
+  const listed = [...PRODUCTION_VERIFIERS, ...RETIRED_VERIFIERS].find(p => p.chainId === chainId && p.verifier.toLowerCase() === tx.to.toLowerCase());
+  if (!listed) throw new Error(`tx.to ${tx.to} is not a known GitcoinVerifier on chain ${chainId}`);
   const verifier = listed.verifier;
   const parsed = iface.parseTransaction({ data: tx.data, value: tx.value });
   if (parsed.name !== 'verifyAndAttest') throw new Error(`not verifyAndAttest: ${parsed.name}`);
@@ -324,11 +350,13 @@ async function main() {
   const txs = REAL_TXS.slice();
   if (process.argv[2]) txs[0] = { chainId: 8453, tx: process.argv[2] };
   const providers = {};
-  for (const p of PRODUCTION_VERIFIERS) {
+  for (const p of [...PRODUCTION_VERIFIERS, ...RETIRED_VERIFIERS]) {
     providers[p.chainId] ??= new ethers.JsonRpcProvider(p.rpc ?? readRpcUrl(), p.chainId, { staticNetwork: true });
   }
   const issuances = [];
   for (const h of txs) issuances.push(await loadIssuance(providers, h));
+  const retired = [];
+  for (const h of RETIRED_TXS) retired.push(await loadIssuance(providers, h));
   const first = issuances[0];
   const txHash = first.txHash;
   const realReq = first.req;
@@ -336,8 +364,8 @@ async function main() {
   const head = first.head;
   const dataLen = first.dataLen;
   const issuedAt = realReq.expirationTime - 90n * DAY;
-  if (domain !== passportDomainSeparator(BASE.chainId, BASE.verifiers[0])) {
-    throw new Error(`the full-circuit suite expects its source issuance to go through ${BASE.verifiers[0]}`);
+  if (domain !== passportDomainSeparator(BASE.chainId, BASE.verifier)) {
+    throw new Error(`the full-circuit suite expects its source issuance to go through ${BASE.verifier}`);
   }
   const realIssuer = first.issuer;
 
@@ -347,12 +375,12 @@ async function main() {
   const other = new ethers.Wallet(OTHER_WALLET_KEY);
 
   // The issuer list: the real issuer on each production verifier, then the test
-  // issuer on Base's current verifier. Nine leaves, padded to sixteen: depth 4.
+  // issuer on Base's verifier. Seven leaves, padded to eight: depth 3.
   const leaves = [
     ...PRODUCTION_VERIFIERS.map(p => issuerLeaf(realIssuer, passportDomainSeparator(p.chainId, p.verifier), p.schema)),
     issuerLeaf(ethers.computeAddress(testIssuer.publicKey), domain, BASE.scoreV2Schema),
   ];
-  // The production list: the real issuer on each Base verifier, nothing else.
+  // The production list: the real issuer on each production verifier, nothing else.
   // Its root is what @zkproofport-app/core pins (HUMAN_PASSPORT_ISSUER_ROOT);
   // the real issuances below prove against it, so a drift between the two
   // fails here instead of on a phone.
@@ -364,8 +392,8 @@ async function main() {
   const testIndex = leaves.length - 1;
   const testTree = merkle(leaves, testIndex);
 
-  for (const i of issuances) {
-    console.log(`real issuance ${i.txHash}`);
+  for (const i of [...issuances, ...retired]) {
+    console.log(`real issuance ${i.txHash}${retired.includes(i) ? ' (retired verifier, must be refused)' : ''}`);
     console.log(`  chain ${i.chainId} via ${i.verifier}, issuer ${i.issuer} == issuer() on chain`);
     console.log(`  score ${i.head.score} scorer ${i.head.scorerId} threshold ${i.head.threshold}, data ${i.dataLen} bytes (cap ${MAX_DATA}), expires ${i.req.expirationTime}`);
   }
@@ -374,6 +402,11 @@ async function main() {
 
   fs.mkdirSync(VECTORS, { recursive: true });
   fs.mkdirSync(REAL_VECTORS, { recursive: true });
+  // A case dropped from the lists must not linger as a file a stale manifest
+  // could still name.
+  for (const dir of [VECTORS, REAL_VECTORS]) {
+    for (const f of fs.readdirSync(dir)) if (f.endsWith('.toml') || f === 'cases.tsv' || f === 'proved_case') fs.rmSync(path.join(dir, f));
+  }
 
   // ---- real issuer half: each real issuance accepted, and two one-field
   //      derivations of the first refused.
@@ -400,7 +433,24 @@ async function main() {
       realCases.push('real_other_recipient\tInvalid issuer signature');
     }
   });
+  // Genuine issuer signatures through a retired verifier: the production list
+  // has no leaf for that domain, so every path is refused. Leaf 0's path is
+  // given (the Base leaf) -- the leaf the circuit computes differs.
+  retired.forEach(i => {
+    const real = {
+      sourceTx: i.txHash, domain: i.domain, req: i.req, issuerSig: i.issuerSig, issuerPub: i.issuerPub,
+      tree: merkle(prodLeaves, 0), leafIndex: 0, minScore: i.head.score, scorerId: i.head.scorerId,
+      now: i.req.expirationTime - 90n * DAY + DAY,
+    };
+    const name = `retired_chain${i.chainId}_${i.verifier.slice(2, 6).toLowerCase()}_${i.dataLen}b`;
+    fs.writeFileSync(path.join(REAL_VECTORS, `${name}.toml`), realToml(real, 'real issuance through a retired verifier, must be REFUSED'));
+    realCases.push(`${name}\tIssuer not in valid list`);
+  });
   fs.writeFileSync(path.join(REAL_VECTORS, 'cases.tsv'), realCases.join('\n') + '\n');
+  const proved = issuances.findIndex(i => i.txHash === PROVED_REAL_TX);
+  if (proved < 0) throw new Error(`PROVED_REAL_TX ${PROVED_REAL_TX} is not among REAL_TXS`);
+  const p = issuances[proved];
+  fs.writeFileSync(path.join(REAL_VECTORS, 'proved_case'), `real_${proved}_chain${p.chainId}_${p.dataLen}b\n`);
 
   // ---- full circuit, synthetic issuer over the real data
   const scope = ethers.keccak256(ethers.toUtf8Bytes('human-passport-score-fixture-scope'));
@@ -471,7 +521,7 @@ async function main() {
     wrong_signer_root: [{ after: () => ({ root: ethers.keccak256(ethers.toUtf8Bytes('another list')) }) }, 'Issuer not in valid list'],
     wrong_leaf_index: [{ after: () => ({ leafIndex: 0 }) }, 'Issuer not in valid list'],
     other_schema: [{ req: { schema: BASE.oldScoreSchema } }, 'Issuer not in valid list'],
-    other_chain_domain: [{ after: f => ({ domain: passportDomainSeparator(10, BASE.verifiers[0]) }) }, 'Invalid issuer signature'],
+    other_chain_domain: [{ after: f => ({ domain: passportDomainSeparator(10, BASE.verifier) }) }, 'Invalid issuer signature'],
     wrong_scorer_id: [{ after: () => ({ scorerId: head.scorerId + 1n }) }, 'Scorer id mismatch'],
     other_decimals: [{ req: { data: setWord(realReq.data, 1, 2n) } }, 'score data: decimals is not 4'],
     dirty_score_padding: [{ req: { data: setWord(realReq.data, 3, (1n << 40n) + head.score) } }, 'score data: score has non-zero padding'],
