@@ -1,7 +1,24 @@
 {
-  "address": "0x39df92d9c603fe6d229c7b00272a1e874a628ace",
+  "address": "0x223e372553739678365486a3ded05310b5bcbc0c",
   "network": "base-sepolia",
   "chainId": 84532,
   "contract": "HonkVerifier",
-  "library": "0xE3A14F23a2Cf1554c91a56AF2477071A5E0C97b5"
+  "libraries": {
+    "RelationsLib": {
+      "address": "0x005723ffe36679440e12a8c3b1529d87438c5ad0",
+      "codeHash": "0x91e4ccccff025d5ee202982e4a4fea35e96d2818acdb48f1e59dbff288e3b45c"
+    },
+    "ZKTranscriptLib": {
+      "address": "0x79e2895dd1c60118a1ce9b37b2c177481256cfc0",
+      "codeHash": "0x8a95d4156510e08db99e2410003fb6f3fb8c3411507d8513f34c912c26c6a53e"
+    }
+  },
+  "deployedFrom": "human-passport-score/target/HumanPassportScore.sol",
+  "replaces": {
+    "address": "0x39df92d9c603fe6d229c7b00272a1e874a628ace",
+    "network": "base-sepolia",
+    "chainId": 84532,
+    "contract": "HonkVerifier",
+    "library": "0xE3A14F23a2Cf1554c91a56AF2477071A5E0C97b5"
+  }
 }

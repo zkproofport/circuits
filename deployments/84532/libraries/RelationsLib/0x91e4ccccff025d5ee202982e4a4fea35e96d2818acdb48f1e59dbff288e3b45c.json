@@ -1,0 +1,9 @@
+{
+  "address": "0x005723ffe36679440e12a8c3b1529d87438c5ad0",
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "contract": "RelationsLib",
+  "codeHash": "0x91e4ccccff025d5ee202982e4a4fea35e96d2818acdb48f1e59dbff288e3b45c",
+  "codeHashOf": "keccak256 of the runtime code with its own address zeroed and the CBOR metadata removed (scripts/lib/verifier-libraries.sh)",
+  "deployedFrom": "coinbase-attestation/target/CoinbaseAttestation.sol"
+}

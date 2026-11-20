@@ -1,7 +1,24 @@
 {
-  "address": "0x1885aa2283db21ad0fc63a2df98efe92f31908e6",
+  "address": "0xe78fcdc7562ce3afceadaf29f4b8b96dc997c01a",
   "network": "base-sepolia",
   "chainId": 84532,
   "contract": "HonkVerifier",
-  "library": "0xE3A14F23a2Cf1554c91a56AF2477071A5E0C97b5"
+  "libraries": {
+    "RelationsLib": {
+      "address": "0x005723ffe36679440e12a8c3b1529d87438c5ad0",
+      "codeHash": "0x91e4ccccff025d5ee202982e4a4fea35e96d2818acdb48f1e59dbff288e3b45c"
+    },
+    "ZKTranscriptLib": {
+      "address": "0x79e2895dd1c60118a1ce9b37b2c177481256cfc0",
+      "codeHash": "0x8a95d4156510e08db99e2410003fb6f3fb8c3411507d8513f34c912c26c6a53e"
+    }
+  },
+  "deployedFrom": "coinbase-attestation-v2/target/CoinbaseAttestationV2.sol",
+  "replaces": {
+    "address": "0x1885aa2283db21ad0fc63a2df98efe92f31908e6",
+    "network": "base-sepolia",
+    "chainId": 84532,
+    "contract": "HonkVerifier",
+    "library": "0xE3A14F23a2Cf1554c91a56AF2477071A5E0C97b5"
+  }
 }

@@ -1,7 +1,24 @@
 {
-  "address": "0xbb430a01ad1e9550d983302963392c1d3d09e62f",
+  "address": "0x87e6096c71c7e3b987b544b5f036cb2da1fb81ba",
   "network": "sepolia",
   "chainId": 11155111,
   "contract": "HonkVerifier",
-  "library": "0x465FAB030D82241BD95268704537A782B8109807"
+  "libraries": {
+    "RelationsLib": {
+      "address": "0xd56021d68e8c9d6a6c5cc20749fd800201e41f74",
+      "codeHash": "0x91e4ccccff025d5ee202982e4a4fea35e96d2818acdb48f1e59dbff288e3b45c"
+    },
+    "ZKTranscriptLib": {
+      "address": "0xf83edff8b5818e2b5e093d2cc9aad424f73a70de",
+      "codeHash": "0x8a95d4156510e08db99e2410003fb6f3fb8c3411507d8513f34c912c26c6a53e"
+    }
+  },
+  "deployedFrom": "oidc-domain-attestation-android/target/OidcDomainAttestationAndroid.sol",
+  "replaces": {
+    "address": "0xbb430a01ad1e9550d983302963392c1d3d09e62f",
+    "network": "sepolia",
+    "chainId": 11155111,
+    "contract": "HonkVerifier",
+    "library": "0x465FAB030D82241BD95268704537A782B8109807"
+  }
 }

@@ -1,0 +1,9 @@
+{
+  "address": "0x276a1f5cb5e874cc815f2394520dd7079597762c",
+  "network": "giwa-sepolia",
+  "chainId": 91342,
+  "contract": "ZKTranscriptLib",
+  "codeHash": "0x8a95d4156510e08db99e2410003fb6f3fb8c3411507d8513f34c912c26c6a53e",
+  "codeHashOf": "keccak256 of the runtime code with its own address zeroed and the CBOR metadata removed (scripts/lib/verifier-libraries.sh)",
+  "deployedFrom": "coinbase-attestation/target/CoinbaseAttestation.sol"
+}

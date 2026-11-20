@@ -1,7 +1,24 @@
 {
-  "address": "0xad6c9bfa60f3ee618dee9dc2027a69c57f2ad816",
+  "address": "0x400474e78a793289d091a5f556f78158956b5d01",
   "network": "giwa-sepolia",
   "chainId": 91342,
   "contract": "HonkVerifier",
-  "library": "0x90679eEAf3bf37d9deD0316c6E51F6Deeb469cD0"
+  "libraries": {
+    "RelationsLib": {
+      "address": "0xc6a8dc34b1872a883afcc808c90c31c038764d9a",
+      "codeHash": "0x91e4ccccff025d5ee202982e4a4fea35e96d2818acdb48f1e59dbff288e3b45c"
+    },
+    "ZKTranscriptLib": {
+      "address": "0x276a1f5cb5e874cc815f2394520dd7079597762c",
+      "codeHash": "0x8a95d4156510e08db99e2410003fb6f3fb8c3411507d8513f34c912c26c6a53e"
+    }
+  },
+  "deployedFrom": "dojang-playground/target/DojangPlayground.sol",
+  "replaces": {
+    "address": "0xad6c9bfa60f3ee618dee9dc2027a69c57f2ad816",
+    "network": "giwa-sepolia",
+    "chainId": 91342,
+    "contract": "HonkVerifier",
+    "library": "0x90679eEAf3bf37d9deD0316c6E51F6Deeb469cD0"
+  }
 }
