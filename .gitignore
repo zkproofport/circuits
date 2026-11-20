@@ -24,6 +24,12 @@
 # `nargo execute <name>` writes <name>.gz, and the acceptance runs name theirs
 # witness_<case>, which the pattern above does not match.
 **/target/witness*.gz
+# Any other witness `nargo execute` drops next to the package artifacts
+# (zktls-notary-1k/target/zktls_notary_1k.gz, ...). No .gz is tracked.
+**/target/*.gz
+
+# Command logs (probe runs, acceptance output): scratch, never committed.
+*.log
 
 # Environment variables (contains sensitive keys)
 .env
