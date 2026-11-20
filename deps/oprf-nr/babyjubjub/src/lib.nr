@@ -1,0 +1,417 @@
+// BabyJubJub Curve Implementation for Noir
+// Based on EIP-2494 and Circom implementation
+// Curve equation: a*x^2 + y^2 = 1 + d*x^2*y^2
+// where a = 168700, d = 168696
+
+use escalar_mul_fix::generator_mul_fix;
+use std::{field::bn254, static_assert};
+
+mod tests;
+pub mod hash_to_curve;
+pub(crate) mod montgomery;
+pub(crate) mod window_table;
+pub(crate) mod escalar_mul_fix;
+
+// BabyJubJub curve constants
+global BABYJUBJUB_A: Field = 168700;
+global BABYJUBJUB_D: Field = 168696;
+
+// Identity point (0, 1)
+global BABYJUBJUB_IDENTITY_X: Field = 0;
+global BABYJUBJUB_IDENTITY_Y: Field = 1;
+
+global BABYJUBJUB_GENERATOR_X: Field =
+    5299619240641551281634865583518297030282874472190772894086521144482721001553;
+global BABYJUBJUB_GENERATOR_Y: Field =
+    16950150798460657717958625567821834550301663161624707787222815936182638968203;
+
+// Scalar field order (Fr) - prime order of BabyJubJub's scalar field
+global BABYJUBJUB_Fr: Field =
+    2736030358979909402780800718157159386076813972158567259200215660948447373041;
+
+global BABYJUBJUB_CHARACTERISTIC: [bool; 251] = [
+    true, false, false, false, true, true, true, true, false, true, true, false, false, true, false,
+    false, true, false, false, false, false, true, false, false, true, false, false, true, true,
+    true, false, false, false, false, true, true, true, false, true, true, true, true, true, false,
+    true, false, false, true, false, true, false, false, true, true, true, false, true, true, true,
+    false, false, true, true, false, false, true, false, true, false, false, false, false, false,
+    true, true, true, false, true, true, true, false, false, false, false, false, true, false,
+    false, true, false, false, true, true, true, false, false, false, false, false, true, true,
+    true, false, true, true, false, true, true, false, true, true, true, false, true, true, true,
+    true, true, false, false, true, true, false, true, false, true, false, true, true, true, false,
+    true, false, false, false, false, true, true, false, true, false, true, false, false, false,
+    false, false, false, true, true, false, false, false, false, false, false, true, false, true,
+    true, false, true, true, false, true, true, false, true, false, false, false, true, false,
+    false, false, false, false, true, false, true, false, false, false, false, true, true, true,
+    false, true, true, false, false, true, false, true, false, false, false, false, false, false,
+    false, true, false, true, true, false, false, false, true, true, false, false, true, false,
+    false, false, false, true, true, true, false, true, false, false, true, true, true, false,
+    false, true, true, true, false, false, true, false, false, false, true, false, false, true,
+    true, false, false, false, false, false, true, true,
+];
+
+/// Represents a point on the BabyJubJub curve.
+///
+/// It is always checked that the point lies on the curve when created using the `new` method.
+/// For performance reasons, the `new_unchecked` method allows creating a point without this check, but it is the caller's responsibility to ensure that the coordinates satisfy the curve equation.
+/// All internal methods assume that the point is on the curve, so using `new_unchecked` with invalid coordinates can lead to incorrect behavior or failed assertions in methods that rely on the curve properties.
+/// Also be careful when using this struct as inputs to `main`, as it is directly constructed from user input and thus must be explicitly validated before use.
+///
+/// While it ensures that points are on the BabyJubJub curve, it does not automatically ensure that points are in the prime-order subgroup. For operations that require subgroup membership, use the `BabyJubJubPointInSubgroup` wrapper which signals and enforces this constraint.
+pub struct BabyJubJubPoint {
+    x: Field,
+    y: Field,
+}
+
+impl BabyJubJubPoint {
+    /// Creates a new BabyJubJub point, checking that it lies on the curve.
+    pub fn new(x: Field, y: Field) -> Self {
+        let point = BabyJubJubPoint { x, y };
+        assert(point.is_on_curve(), "Point is not on the BabyJubJub curve");
+        point
+    }
+
+    /// Creates a new BabyJubJub point from coordinates without checking if it's on the curve.
+    ///
+    /// Precondition: The caller must ensure that the provided coordinates satisfy the curve equation.
+    pub fn new_unchecked(x: Field, y: Field) -> Self {
+        BabyJubJubPoint { x, y }
+    }
+
+    /// Creates the identity point
+    pub fn identity() -> Self {
+        BabyJubJubPoint { x: BABYJUBJUB_IDENTITY_X, y: BABYJUBJUB_IDENTITY_Y }
+    }
+
+    /// Creates the generator point
+    pub fn generator() -> Self {
+        BabyJubJubPoint { x: BABYJUBJUB_GENERATOR_X, y: BABYJUBJUB_GENERATOR_Y }
+    }
+
+    /// Returns the x-coordinate of the point
+    pub fn x(self) -> Field {
+        self.x
+    }
+
+    /// Returns the y-coordinate of the point
+    pub fn y(self) -> Field {
+        self.y
+    }
+
+    /// Checks if the point is on the BabyJubJub curve
+    ///
+    /// Curve equation: a*x^2 + y^2 = 1 + d*x^2*y^2
+    /// This is done automatically in the `new` constructor, but this method can be used to validate points that were created with `new_unchecked` or passed as inputs.
+    pub fn is_on_curve(self) -> bool {
+        let lhs = BABYJUBJUB_A * self.x * self.x + self.y * self.y;
+        let rhs = 1 + BABYJUBJUB_D * self.x * self.x * self.y * self.y;
+        lhs == rhs
+    }
+
+    /// Checks if the point is the identity element
+    pub fn is_identity(self) -> bool {
+        let x_eq = self.x == BABYJUBJUB_IDENTITY_X;
+        let y_eq = self.y == BABYJUBJUB_IDENTITY_Y;
+        x_eq & y_eq
+    }
+
+    /// Checks if the point is not the identity element
+    pub fn is_not_identity(self) -> bool {
+        !self.is_identity()
+    }
+
+    /// Multiplies the point by the cofactor (8 for BabyJubJub over BN254)
+    /// This ensures the resulting point is in the prime-order subgroup.
+    pub fn multiply_by_cofactor(self) -> BabyJubJubPointInSubgroup {
+        BabyJubJubPointInSubgroup { point: self.double().double().double() }
+    }
+
+    /// Checks two points for equality
+    pub fn equals(self, other: BabyJubJubPoint) -> bool {
+        (self.x == other.x) & (self.y == other.y)
+    }
+
+    unconstrained fn add_unconstrained(self, other: BabyJubJubPoint) -> (Field, Field) {
+        let beta = self.x * other.y;
+        let gamma = self.y * other.x;
+        let delta = (-BABYJUBJUB_A * self.x + self.y) * (other.x + other.y);
+        let tau = beta * gamma;
+
+        let denominator1 = 1 + BABYJUBJUB_D * tau;
+        let denominator2 = 1 - BABYJUBJUB_D * tau;
+
+        let x = (beta + gamma) / denominator1;
+        let y = (delta + BABYJUBJUB_A * beta - gamma) / denominator2;
+        (x, y)
+    }
+
+    /// Point addition on BabyJubJub (twisted Edwards).
+    /// Precondition: both points must lie on the BabyJubJub curve.
+    pub fn add(self, other: BabyJubJubPoint) -> Self {
+        let beta = self.x * other.y;
+        let gamma = self.y * other.x;
+        let delta = (-BABYJUBJUB_A * self.x + self.y) * (other.x + other.y);
+        let tau = beta * gamma;
+
+        let den_x = 1 + BABYJUBJUB_D * tau;
+        let den_y = 1 - BABYJUBJUB_D * tau;
+
+        // Safety: Points lie on the BabyJubJub curve and its TE addition formula is complete.
+        let (x, y) = unsafe { Self::add_unconstrained(self, other) };
+        assert(
+            y * den_y == delta + BABYJUBJUB_A * beta - gamma,
+            "Edwards add y-coordinate constraint failed",
+        );
+        assert(x * den_x == beta + gamma, "Edwards add x-coordinate constraint failed");
+
+        BabyJubJubPoint { x, y }
+    }
+
+    /// Point negation
+    pub fn negate(self) -> Self {
+        BabyJubJubPoint { x: -self.x, y: self.y }
+    }
+
+    /// Point subtraction: self - other = self + (-other)
+    pub fn subtract(self, other: BabyJubJubPoint) -> Self {
+        self.add(other.negate())
+    }
+
+    /// Point doubling
+    /// Precondition: the point must lie on the BabyJubJub curve.
+    pub fn double(self) -> Self {
+        self.add(self)
+    }
+
+    pub fn scalar_mul(self, scalar: BabyJubJubScalarFieldElement) -> Self {
+        // Early termination for zero scalar
+        if scalar.value() == 0 {
+            BabyJubJubPoint::identity()
+        } else {
+            // Decompose scalar into 251 bits (BabyJubJub scalar field size)
+            let bits: [bool; 251] = scalar.to_le_bits();
+            self.scalar_mul_bits(bits)
+        }
+    }
+
+    /// Scalar multiplication with bit array (little-endian)
+    ///
+    /// This is equivalent to ec library's bit_mul but with explicit bit input.
+    /// Useful when you already have the scalar decomposed to bits.
+    ///
+    /// # Arguments
+    /// * `bits` - Scalar in bit representation (little-endian)
+    ///
+    /// For Variable-base: use double-and-add (~N doubles, ~N/2 adds).
+    /// Window-w needs a per-point table (2^w) and a select each window
+    /// so windowing is reserved for fixed-base (generator) where the table is precomputed.
+    pub fn scalar_mul_bits<let N: u32>(self, bits: [bool; N]) -> Self {
+        assert(self.is_on_curve(), "Point must be on curve");
+
+        let mut result = BabyJubJubPoint::identity();
+
+        for i in 0..N {
+            result = result.double();
+
+            if bits[N - 1 - i] {
+                result = result.add(self);
+            }
+        }
+
+        result
+    }
+    /// Base field scalar multiplication
+    pub fn scalar_mul_base_field(self, scalar_fq: Field) -> Self {
+        // Early termination for zero scalar
+        if scalar_fq == 0 {
+            BabyJubJubPoint::identity()
+        } else {
+            // Decompose to 254 bits
+            let bits: [bool; 254] = scalar_fq.to_le_bits();
+
+            self.scalar_mul_bits(bits)
+        }
+    }
+
+    // Precondition: This method expects that the point is on-curve.
+    pub fn check_sub_group(self) -> bool {
+        static_assert(
+            BABYJUBJUB_CHARACTERISTIC[250],
+            "Characteristic has high bit set",
+        );
+
+        let mut p = self;
+        for i in 0..250 {
+            p = p.double();
+            if BABYJUBJUB_CHARACTERISTIC[249 - i] {
+                p = p.add(self);
+            }
+        }
+
+        p.is_identity()
+    }
+
+    /// A more efficient method for multiplying the generator by a scalar, using a fixed window method with precomputation.
+    pub fn generator_scalar_mul(scalar: BabyJubJubScalarFieldElement) -> Self {
+        generator_mul_fix(scalar)
+    }
+}
+
+/// Represents a point on the BabyJubJub curve that is guaranteed to be in the prime-order subgroup.
+/// This wrapper ensures that any point of this type has been validated to lie in the correct subgroup, which is essential for cryptographic operations that rely on subgroup properties.
+pub struct BabyJubJubPointInSubgroup {
+    point: BabyJubJubPoint,
+}
+
+impl BabyJubJubPointInSubgroup {
+    /// Creates a new BabyJubJub point from coordinates, checking that it is on the curve and in the subgroup.
+    pub fn new(x: Field, y: Field) -> Self {
+        let point = BabyJubJubPoint::new(x, y);
+        assert(point.check_sub_group(), "Point is not in the correct subgroup");
+        BabyJubJubPointInSubgroup { point }
+    }
+    /// Validates and wraps a BabyJubJubPoint, checking that it is in the subgroup.
+    pub fn from_point(point: BabyJubJubPoint) -> Self {
+        assert(point.check_sub_group(), "Point is not in the correct subgroup");
+        BabyJubJubPointInSubgroup { point }
+    }
+
+    /// Validates and wraps a BabyJubJubPoint without checking it is in the subgroup.
+    ///
+    /// Precondition: The caller must ensure that the provided coordinates satisfy the curve equation and subgroup membership.
+    pub fn from_point_unchecked(point: BabyJubJubPoint) -> Self {
+        BabyJubJubPointInSubgroup { point }
+    }
+
+    /// Creates a new BabyJubJub point from coordinates without checking if it's on the curve or in the subgroup.
+    ///
+    /// Precondition: The caller must ensure that the provided coordinates satisfy the curve equation and subgroup membership.
+    pub fn new_unchecked(x: Field, y: Field) -> Self {
+        let point = BabyJubJubPoint::new_unchecked(x, y);
+        BabyJubJubPointInSubgroup { point }
+    }
+
+    /// Creates the identity point
+    pub fn identity() -> Self {
+        // The identity point is in the subgroup since it's the neutral element for addition.
+        Self { point: BabyJubJubPoint::identity() }
+    }
+
+    /// Creates the generator point
+    pub fn generator() -> Self {
+        Self { point: BabyJubJubPoint { x: BABYJUBJUB_GENERATOR_X, y: BABYJUBJUB_GENERATOR_Y } }
+    }
+
+    /// Returns the x-coordinate of the point
+    pub fn x(self) -> Field {
+        self.point.x
+    }
+
+    /// Returns the y-coordinate of the point
+    pub fn y(self) -> Field {
+        self.point.y
+    }
+
+    /// Checks if the point is the identity element
+    pub fn is_identity(self) -> bool {
+        self.point.is_identity()
+    }
+
+    /// Checks if the point is not the identity element
+    pub fn is_not_identity(self) -> bool {
+        !self.is_identity()
+    }
+
+    pub fn generator_scalar_mul(scalar: BabyJubJubScalarFieldElement) -> Self {
+        // Since we multiply the generator by a scalar, the result will always be in the subgroup.
+        Self { point: generator_mul_fix(scalar) }
+    }
+
+    /// Checks two points for equality
+    pub fn equals(self, other: BabyJubJubPointInSubgroup) -> bool {
+        self.point.equals(other.point)
+    }
+
+    pub fn negate(self) -> Self {
+        // Negation of a point in the subgroup will also yield a point in the subgroup.
+        Self { point: self.point.negate() }
+    }
+
+    pub fn add(self, other: BabyJubJubPointInSubgroup) -> Self {
+        // The sum of two points in the subgroup is also in the subgroup.
+        Self { point: self.point.add(other.point) }
+    }
+
+    pub fn double(self) -> Self {
+        // Doubling a point in the subgroup will also yield a point in the subgroup.
+        Self { point: self.point.double() }
+    }
+
+    pub fn subtract(self, other: BabyJubJubPointInSubgroup) -> Self {
+        // The difference of two points in the subgroup is also in the subgroup.
+        Self { point: self.point.subtract(other.point) }
+    }
+
+    pub fn scalar_mul(self, scalar: BabyJubJubScalarFieldElement) -> Self {
+        // Scalar multiplication of a point in the subgroup will also yield a point in the subgroup.
+        Self { point: self.point.scalar_mul(scalar) }
+    }
+
+    pub fn scalar_mul_bits(self, bits: [bool; 251]) -> Self {
+        // Scalar multiplication of a point in the subgroup will also yield a point in the subgroup.
+        Self { point: self.point.scalar_mul_bits(bits) }
+    }
+
+    pub fn scalar_mul_base_field(self, scalar_fq: Field) -> Self {
+        // Scalar multiplication of a point in the subgroup will also yield a point in the subgroup.
+        Self { point: self.point.scalar_mul_base_field(scalar_fq) }
+    }
+}
+
+pub struct BabyJubJubScalarFieldElement {
+    inner: Field,
+}
+
+impl BabyJubJubScalarFieldElement {
+    /// Creates a new BabyJubJub scalar field element, checking that it is within the valid range of the scalar field.
+    pub fn new(value: Field) -> Self {
+        validate_babyjubjub_scalar_field(value);
+        BabyJubJubScalarFieldElement { inner: value }
+    }
+
+    pub fn value(self) -> Field {
+        self.inner
+    }
+
+    pub fn to_le_bits(self) -> [bool; 251] {
+        self.inner.to_le_bits()
+    }
+}
+
+/// Validates that a field element is in the BabyJubJub scalar field Fr
+fn validate_babyjubjub_scalar_field(field_element: Field) {
+    bn254::assert_lt(field_element, BABYJUBJUB_Fr);
+}
+
+#[test]
+fn test_babyjubjub_in_correct_subgroup() {
+    let p0 = 4597297048474520994314398800947075450541957920804155712178316083765998639288;
+    let p1 = 5569132826648062501012191259106565336315721760204071234863390487921354852142;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)));
+}
+
+#[test]
+fn test_two_torsion_not_correct_subgroup() {
+    let p0 = 0;
+    let p1 = -1;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)) == false);
+}
+#[test]
+fn test_a_plus_two_torsion_not_correct_subgroup() {
+    let p0 = 4689731437944306428780974070575571025333825310181802403039288057202868837337;
+    let p1 = 14792220576807380471707687543579831579477508903129740636298855878394914021491;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)) == false);
+}

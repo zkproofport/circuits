@@ -1,6 +1,6 @@
+use crate::fields::bls12_381Fq::BLS12_381_Fq_PARAMS;
 use crate::fields::bn254Fq::BN254_Fq_PARAMS;
-use crate::fns::constrained_ops::{sub, udiv};
-use crate::fns::unconstrained_helpers::__barrett_reduction;
+use crate::fns::unconstrained_helpers::{__barrett_reduction, __quadratic_non_residue};
 use crate::params::BigNumParams;
 use crate::runtime_bignum::RuntimeBigNum;
 
@@ -47,24 +47,24 @@ global TEST_2048_PARAMS: BigNumParams<18, 2048> = BigNumParams {
         0x0170,
     ],
     redc_param: [
-        0x1697def7100cd5cf8d890b4ef2ec3f,
-        0x765ba8304214dac764d3f4adc31859,
-        0x8404bd14d927ea230e60d4bebf9406,
-        0xc4d53a23bacc251ecbfc4b7ba5a0b4,
-        0x3eaf3499474a6f5b2fff83f1259c87,
-        0xbff4c737b97281f1a5f2384a8c16d9,
-        0x1b4cf2f55358476b53237829990555,
-        0xe7a804e8eacfe3a2a5673bc3885b86,
-        0xabadeae4282906c817adf70eab4ae1,
-        0x66f7df257fe2bf27f0809aceed9b0e,
-        0xd90fb7428901b8bed11f6b81e36bf1,
-        0x36e6ba885c60b7024c563605df7e07,
-        0x2b7c58d2fb5d2c8478963ae6d4a44f,
-        0x6ee761de26635f114ccc3f7d74f855,
-        0x3fb726a10cf2220897513f05243de3,
-        0x43a26bbd732496eb4d828591b8056e,
-        0xf4e42304e60fb3a54fca735499f2cf,
-        0x162f,
+        0x5a5f7bdc4033573e36242d3bcbb0fe,
+        0xd96ea0c108536b1d934fd2b70c6164,
+        0x1012f453649fa88c398352fafe5019,
+        0x1354e88eeb30947b2ff12dee9682d2,
+        0xfabcd2651d29bd6cbffe0fc496721f,
+        0xffd31cdee5ca07c697c8e12a305b64,
+        0x6d33cbd54d611dad4c8de0a6641556,
+        0x9ea013a3ab3f8e8a959cef0e216e18,
+        0xaeb7ab90a0a41b205eb7dc3aad2b87,
+        0x9bdf7c95ff8afc9fc2026b3bb66c3a,
+        0x643edd0a2406e2fb447dae078dafc5,
+        0xdb9aea217182dc093158d8177df81f,
+        0xadf1634bed74b211e258eb9b52913c,
+        0xbb9d8778998d7c453330fdf5d3e154,
+        0xfedc9a8433c888225d44fc1490f78d,
+        0x0e89aef5cc925bad360a1646e015b8,
+        0xd3908c13983ece953f29cd5267cb3d,
+        0x58bf,
     ],
 };
 
@@ -75,11 +75,24 @@ comptime fn make_test(_m: Module, N: u32, MOD_BITS: u32, params: Quoted) -> Quot
     let RuntimeBigNum = quote { crate::RuntimeBigNum };
     let __helper_add = quote { crate::fns::unconstrained_helpers::__helper_add };
     let __helper_sub = quote { crate::fns::unconstrained_helpers::__helper_sub };
-    let __one = quote { crate::fns::unconstrained_ops::__one };
+    let __one = quote { crate::fns::unconstrained_helpers::__one };
     let __shl = quote { crate::fns::unconstrained_helpers::__shl };
     let udiv = quote { crate::fns::constrained_ops::udiv };
+    let udiv_unsafe = quote { crate::fns::constrained_ops::udiv_unsafe };
     let sub = quote { crate::fns::constrained_ops::sub };
     quote {
+
+#[test]
+fn test_derive()
+{
+    let params: crate::params::BigNumParams<_,_> = $params;
+
+    // let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, "hello".as_bytes());
+    let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
+    let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
+    assert_eq(a, b);
+}
+
 #[test]
 fn test_add() {
     let params: crate::params::BigNumParams<_,_> = $params;
@@ -91,10 +104,9 @@ fn test_add() {
     a.validate_in_field();
     b.validate_in_range();
     b.validate_in_field();
+
     let mut c = a + b;
-    
     c = c + c;
-    
     let d = (a + b) * (one + one);
     assert(c == d);
 
@@ -103,52 +115,6 @@ fn test_add() {
         assert(e.limbs[i] == 0);
     }
     assert(e.limbs[0] == 2);
-}
-
-#[test]
-fn test_sub() {
-    let params: crate::params::BigNumParams<_,_> = $params;
-
-    // 0 - 1 should equal p - 1
-    let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
-    let mut b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::one(params);
-    let mut expected: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: params.modulus, params };
-
-    expected.limbs[0] -= 1; // p - 1
-
-    let result = a - b;
-    assert(result == expected);
-}
-
-
-#[test]
-fn test_sub_modulus_limit() {
-    let params: crate::params::BigNumParams<_,_> = $params;
-    // if we underflow, maximum result should be ...
-    // 0 - 1 = o-1
-    // 0 - p = 0
-    let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
-    let mut b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: params.modulus, params };
-    let mut expected: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
-
-    let result = a - b;
-    assert(result == expected);
-}
-
-
-#[test(should_fail_with = "call to assert_max_bit_size")]
-fn test_sub_modulus_underflow() {
-    let params: crate::params::BigNumParams<_,_> = $params;
-
-    // 0 - (p + 1) is smaller than p and should produce unsatisfiable constraints
-    let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
-    let mut b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: params.modulus, params };
-    b.limbs[0] += 1;
-    let mut expected: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::one(params);
-
-    let result = a - b;
-
-    assert(result == expected);
 }
 
 #[test]
@@ -164,7 +130,7 @@ fn test_add_modulus_limit() {
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: p, params };
 
     // Safety: test code
-    let two_pow_modulus_bits_minus_one: [u128; $N] =  unsafe { $__helper_sub($__shl(one, $MOD_BITS), one) };
+    let two_pow_modulus_bits_minus_one: [u128; $N] =  unsafe { $__helper_sub(&$__shl(&one, $MOD_BITS), &one) };
 
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: two_pow_modulus_bits_minus_one, params };
     let result = a + b;
@@ -180,14 +146,60 @@ fn test_add_modulus_overflow() {
     let one = unsafe{$__one()};
 
     // Safety: test code
-    let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(p, one) }, params };
+    let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(&p, &one) }, params };
 
     // Safety: test code
-    let mut two_pow_modulus_bits_minus_one: [u128; $N] =  unsafe { $__helper_sub($__shl(one, $MOD_BITS), one) };
+    let two_pow_modulus_bits_minus_one: [u128; $N] =  unsafe { $__helper_sub(&$__shl(&one, $MOD_BITS), &one) };
 
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: two_pow_modulus_bits_minus_one, params };
     let result = a + b;
     assert(result == b);
+}
+
+#[test]
+fn test_sub() {
+    let params: crate::params::BigNumParams<_,_> = $params;
+
+    // 0 - 1 should equal p - 1
+    let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
+    let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::one(params);
+    let mut expected: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: params.modulus, params };
+
+    expected.limbs[0] -= 1; // p - 1
+
+    let result = a - b;
+    assert(result == expected);
+}
+
+
+#[test]
+fn test_sub_modulus_limit() {
+    let params: crate::params::BigNumParams<_,_> = $params;
+    // if we underflow, maximum result should be ...
+    // 0 - 1 = o-1
+    // 0 - p = 0
+    let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
+    let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: params.modulus, params };
+    let expected: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
+
+    let result = a - b;
+    assert(result == expected);
+}
+
+
+#[test(should_fail_with = "call to assert_max_bit_size")]
+fn test_sub_modulus_underflow() {
+    let params: crate::params::BigNumParams<_,_> = $params;
+
+    // 0 - (p + 1) is smaller than p and should produce unsatisfiable constraints
+    let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
+    let mut b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: params.modulus, params };
+    b.limbs[0] += 1;
+    let expected: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::one(params);
+
+    let result = a - b;
+
+    assert(result == expected);
 }
 
 #[test]
@@ -203,74 +215,26 @@ fn test_mul() {
 }
 
 #[test]
-fn test_quadratic_expression() {
-    let params: crate::params::BigNumParams<_,_> = $params;
-
-    for i in 0..32 {
-        let X1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [i as u8, 2, 3, 4]);
-        let Y1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [i as u8, i as u8, 6, 7]);
-        let Z1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::one(params);
-
-        let (_, YY_mul_2): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[Y1]], [[false]], [[Y1, Y1]], [[false, false]], [], []);
-        let mut (_, XX_mul_3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(
-            params,
-            [[X1]],
-            [[false]],
-            [[X1, X1, X1]],
-            [[false, false, false]],
-            [],
-            []
-        );
-        let (_, D): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[X1, X1]], [[false, false]], [[YY_mul_2]], [[false]], [], []);
-        let mut (_, X3) =  crate::runtime_bignum::__compute_quadratic_expression(
-            params,
-            [[XX_mul_3]],
-            [[false]],
-            [[XX_mul_3]],
-            [[false]],
-            [D, D],
-            [true, true]
-        );
-        let (_, Y3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(
-            params,
-            [[XX_mul_3], [YY_mul_2]],
-            [[false], [true]],
-            [[D, X3], [YY_mul_2, YY_mul_2]],
-            [[false, true], [false, false]],
-            [],
-            []
-        );
-        // 3XX * (D - X3) - 8YYYY
-
-        let (_, Z3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[Y1]], [[false]], [[Z1, Z1]], [[false, false]], [], []);
-
-        X3.validate_in_field();
-        Y3.validate_in_field();
-        Z3.validate_in_field();
-    }
-}
-
-#[test]
 fn assert_is_not_equal() {
     let params: crate::params::BigNumParams<_,_> = $params;
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [4, 5, 6, 7]);
 
-    a.assert_is_not_equal(b);
+    a.assert_is_not_equal(&b);
 }
 
-#[test(should_fail_with = "asssert_is_not_equal fail")]
+#[test(should_fail_with = "assert_is_not_equal fail")]
 fn assert_is_not_equal_fail() {
     let params: crate::params::BigNumParams<_,_> = $params;
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
 
-    a.assert_is_not_equal(b);
+    a.assert_is_not_equal(&b);
 }
 
-#[test(should_fail_with = "asssert_is_not_equal fail")]
+#[test(should_fail_with = "assert_is_not_equal fail")]
 fn assert_is_not_equal_overloaded_lhs_fail() {
     let params: crate::params::BigNumParams<_,_> = $params;
 
@@ -282,12 +246,12 @@ fn assert_is_not_equal_overloaded_lhs_fail() {
     let t0: [u128; $N] = a.limbs;
     let t1: [u128; $N] = modulus;
     // Safety: test code
-    let a_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(t0, t1) }, params };
+    let a_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(&t0, &t1) }, params };
 
-    a_plus_modulus.assert_is_not_equal(b);
+    a_plus_modulus.assert_is_not_equal(&b);
 }
 
-#[test(should_fail_with = "asssert_is_not_equal fail")]
+#[test(should_fail_with = "assert_is_not_equal fail")]
 fn assert_is_not_equal_overloaded_rhs_fail() {
     let params: crate::params::BigNumParams<_,_> = $params;
 
@@ -299,12 +263,12 @@ fn assert_is_not_equal_overloaded_rhs_fail() {
     let t0: [u128; $N] = b.limbs;
     let t1: [u128; $N] = modulus;
     // Safety: test code
-    let b_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(t0, t1) }, params };
+    let b_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(&t0, &t1) }, params };
 
-    a.assert_is_not_equal(b_plus_modulus);
+    a.assert_is_not_equal(&b_plus_modulus);
 }
 
-#[test(should_fail_with = "asssert_is_not_equal fail")]
+#[test(should_fail_with = "assert_is_not_equal fail")]
 fn assert_is_not_equal_overloaded_fail() {
     let params: crate::params::BigNumParams<_,_> = $params;
 
@@ -318,22 +282,11 @@ fn assert_is_not_equal_overloaded_fail() {
     let t2: [u128; $N] = modulus;
 
     // Safety: test code
-    let a_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(t0, t2) }, params };
+    let a_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(&t0, &t2) }, params };
     // Safety: test code
-    let b_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(t1, t2) }, params };
+    let b_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(&t1, &t2) }, params };
 
-    a_plus_modulus.assert_is_not_equal(b_plus_modulus);
-}
-
-#[test]
-fn test_derive()
-{
-    let params: crate::params::BigNumParams<_,_> = $params;
-
-    // let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, "hello".as_bytes());
-    let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
-    let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
-    assert_eq(a, b);
+    a_plus_modulus.assert_is_not_equal(&b_plus_modulus);
 }
 
 #[test]
@@ -350,7 +303,7 @@ fn test_eq() {
     let t1: [u128; $N] = b.limbs;
 
     // Safety: test code
-    let b_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(t0, t1) }, params };
+    let b_plus_modulus: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: unsafe { $__helper_add(&t0, &t1) }, params };
 
     assert_eq(a, b);
     assert_eq(a, b_plus_modulus);
@@ -366,7 +319,11 @@ fn test_is_zero() {
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
 
     assert(a.is_zero() == true);
+    assert(a.unsafe_is_zero_integer() == true);
     assert(b.is_zero() == false);
+    assert(b.unsafe_is_zero_integer() == false);
+
+    b.assert_is_not_zero();
 }
 
 #[test]
@@ -433,10 +390,11 @@ fn test_cmp_fuzz(seed: [u8; 2]){
     one[0] = 1;
     if modulus[0] % 2 == 0 {
         // if modulus is even, half_modulus is modulus / 2
-        half_modulus = $RuntimeBigNum {limbs: $udiv(params, modulus, two), params};
+        half_modulus = $RuntimeBigNum {limbs: $udiv_unsafe::<$N, $MOD_BITS>(&modulus, &two), params};
     } else {
         // if modulus is odd, half_modulus is (modulus - 1) / 2
-        half_modulus = $RuntimeBigNum {limbs: $udiv(params, $sub(params,modulus, one), two), params};
+        let modulus_minus_one = $sub(&params, &modulus, &one);
+        half_modulus = $RuntimeBigNum {limbs: $udiv::<$N, $MOD_BITS>(&params, &modulus_minus_one, &two), params};
     }
 
 
@@ -448,29 +406,76 @@ fn test_cmp_fuzz(seed: [u8; 2]){
     assert(a < half_modulus);
 }
 
+#[test]
+fn test_quadratic_expression() {
+    let params: crate::params::BigNumParams<_,_> = $params;
+
+    for i in 0..32 {
+        let X1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [i as u8, 2, 3, 4]);
+        let Y1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [i as u8, i as u8, 6, 7]);
+        let Z1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::one(params);
+
+        let (_, YY_mul_2): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[Y1]], [[false]], [[Y1, Y1]], [[false, false]], [], []);
+        let (_, XX_mul_3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(
+            params,
+            [[X1]],
+            [[false]],
+            [[X1, X1, X1]],
+            [[false, false, false]],
+            [],
+            []
+        );
+        let (_, D): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[X1, X1]], [[false, false]], [[YY_mul_2]], [[false]], [], []);
+        let (_, X3) =  crate::runtime_bignum::__compute_quadratic_expression(
+            params,
+            [[XX_mul_3]],
+            [[false]],
+            [[XX_mul_3]],
+            [[false]],
+            [D, D],
+            [true, true]
+        );
+        let (_, Y3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(
+            params,
+            [[XX_mul_3], [YY_mul_2]],
+            [[false], [true]],
+            [[D, X3], [YY_mul_2, YY_mul_2]],
+            [[false, true], [false, false]],
+            [],
+            []
+        );
+        // 3XX * (D - X3) - 8YYYY
+
+        let (_, Z3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[Y1]], [[false]], [[Z1, Z1]], [[false, false]], [], []);
+
+        X3.validate_in_field();
+        Y3.validate_in_field();
+        Z3.validate_in_field();
+    }
+}
 
 }
 }
 
-#[make_test(3, 254, quote {crate::fields::bn254Fq::BN254_Fq_PARAMS})]
+#[make_test(3, 254, quote { crate::fields::bn254Fq::BN254_Fq_PARAMS })]
 pub mod BNTests {}
 
-#[make_test(3, 256, quote {crate::fields::secp256k1Fq::Secp256k1_Fq_PARAMS})]
+#[make_test(3, 256, quote { crate::fields::secp256k1Fq::Secp256k1_Fq_PARAMS })]
 pub mod Secp256K1FqTests {}
 
-#[make_test(4, 381, quote {crate::fields::bls12_381Fq::BLS12_381_Fq_PARAMS})]
+#[make_test(4, 381, quote { crate::fields::bls12_381Fq::BLS12_381_Fq_PARAMS })]
 pub mod BLS12_381FqTests {}
 
-#[make_test(18, 2048, quote {super::TEST_2048_PARAMS})]
+#[make_test(18, 2048, quote { super::TEST_2048_PARAMS })]
 pub mod Test2048Tests {}
 
-#[make_test(3, 255, quote {crate::fields::bls12_381Fr::BLS12_381_Fr_PARAMS})]
+#[make_test(3, 255, quote { crate::fields::bls12_381Fr::BLS12_381_Fr_PARAMS })]
 pub mod BLS12_381_Fr_ParamsTests {}
 
-#[make_test(4, 377, quote {crate::fields::bls12_377Fq::BLS12_377_Fq_PARAMS})]
+#[make_test(4, 377, quote { crate::fields::bls12_377Fq::BLS12_377_Fq_PARAMS })]
 pub mod BLS12_377_Fq_ParamsTests {}
 
-#[make_test(3, 253, quote {crate::fields::bls12_377Fr::BLS12_377_Fr_PARAMS})]
+#[make_test(3, 253, quote { crate::fields::bls12_377Fr::BLS12_377_Fr_PARAMS })]
 pub mod BLS12_377_Fr_ParamsTests {}
 
 // 98760
@@ -489,7 +494,7 @@ unconstrained fn test_invmod<let N: u32, let MOD_BITS: u32>(params: BigNumParams
     let u: RuntimeBigNum<N, MOD_BITS> = RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     for _ in 0..1 {
         let v = u.__invmod();
-        let result = u.__mul(v);
+        let result = u.__mul(&v);
         let expected: RuntimeBigNum<N, MOD_BITS> = RuntimeBigNum::one(params);
         assert(result.limbs == expected.limbs);
     }
@@ -507,20 +512,6 @@ fn test_invmod_BN() {
     // Safety: test code
     unsafe { test_invmod(params) };
 }
-
-// N.B. witness generation times make these tests take ~15 minutes each! Uncomment at your peril
-// #[test]
-// fn test_div_2048() {
-// let params = get_2048_params();
-//     test_div(params);
-// }
-
-// N.B. witness generation times make these tests take ~15 minutes each! Uncomment at your peril
-// #[test]
-// fn test_invmod_2048() {
-// let params = get_2048_params();
-//     test_invmod(params);
-// }
 
 #[test]
 fn test_2048_bit_quadratic_expression() {
@@ -610,11 +601,28 @@ fn test_sqrt_BN() {
 
     let x = RuntimeBigNum { limbs: [9, 0, 0], params };
 
-    let maybe_sqrt_x = x.__tonelli_shanks_sqrt();
+    let maybe_sqrt_x = x.__sqrt();
 
     let sqrt_x = maybe_sqrt_x.unwrap();
 
     assert(sqrt_x * sqrt_x == x);
+}
+
+#[test]
+fn test_sqrt_BLS12_381_Fq() {
+    let params = BLS12_381_Fq_PARAMS;
+    let a = RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
+    let b = a * a;
+
+    let c = b.__sqrt().unwrap();
+    assert((c == a) | (c == -a));
+
+    // Safety: test code
+    let qnr_limbs: [u128; 4] = unsafe { __quadratic_non_residue(&params) };
+    let g = RuntimeBigNum { params: params, limbs: qnr_limbs };
+    // Safety: test code
+    let c = g.__sqrt();
+    assert(c.is_none());
 }
 
 // N.B. this test is only here to check that the barrett reduction is working correctly
@@ -637,15 +645,15 @@ fn test_barrett_reduction_fix() {
             0xb640c3a8f511c64e,
         ],
         [
-            0x5d53d2634c6a0918266043968ce263,
-            0x5dd4be3dce0323a492ee9340aec4db,
-            0xf82d0e2e5c8319f01a460c72c01854,
-            0x236e6fc6e62e8a1d522acda5fb3892,
-            0xdaf755619d66e580901aa224d03174,
-            0x8366291616480e7e1f202dbcedda87,
-            0x40ba1202537d1e94561ccc05265586,
-            0x69b993d857ba89ea5de9822aeb4b93,
-            0x167968c0000761a273,
+            0x754f498d31a8246099810e5a33898c,
+            0x7752f8f7380c8e924bba4d02bb136d,
+            0xe0b438b9720c67c0691831cb006151,
+            0x8db9bf1b98ba287548ab3697ece24b,
+            0x6bdd5586759b9602406a889340c5d0,
+            0x0d98a458592039f87c80b6f3b76a1f,
+            0x02e848094df47a515873301499561a,
+            0xa6e64f615eea27a977a608abad2e4d,
+            0x59e5a300001d8689cd,
         ],
     );
     let to_reduce: [u128; 18] = [
@@ -671,6 +679,20 @@ fn test_barrett_reduction_fix() {
 
     // Safety: test code
     let (_quotient, remainder) =
-        unsafe { __barrett_reduction(to_reduce, params.redc_param, 1024, params.modulus) };
+        unsafe { __barrett_reduction(&to_reduce, &params.redc_param, 1024, &params.modulus) };
     assert((remainder[8] as Field).lt(params.modulus[8] as Field));
+}
+
+// BigNumParams::new must reject a modulus shorter than MOD_BITS (top bit not set).
+#[test(should_fail)]
+fn test_runtime_bignum_params_modulus_too_small() {
+    let modulus: [u128; 3] = [1, 0, 0];
+    let _: BigNumParams<3, 254> = BigNumParams::new(false, modulus, [0 as u128; 3]);
+}
+
+// BigNumParams::new must reject a modulus with limbs exceeding the expected bit width.
+#[test(should_fail)]
+fn test_runtime_bignum_params_modulus_too_large() {
+    let modulus: [u128; 3] = [1, 0, 0x10000];
+    let _: BigNumParams<3, 254> = BigNumParams::new(false, modulus, [0 as u128; 3]);
 }

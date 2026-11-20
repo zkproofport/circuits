@@ -1,15 +1,15 @@
 use crate::sha256::constants::HASH;
 
-use crate::sha256::{__sha_var, finalize_sha256_blocks, partial_sha256_var_end, process_full_blocks};
+use crate::sha256::{finalize_sha256_blocks, partial_sha256_var_end, process_full_blocks};
 
 use constants as sha224_constants;
 
 pub(crate) mod constants;
 mod tests;
+mod oracle_tests;
 
 // Variable size SHA-224 hash
-pub fn sha224_var<let N: u32>(msg: [u8; N], message_size: u64) -> sha224_constants::HASH_SHA224 {
-    let message_size = message_size as u32;
+pub fn sha224_var<let N: u32>(msg: [u8; N], message_size: u32) -> sha224_constants::HASH_SHA224 {
     assert(message_size <= N);
 
     if std::runtime::is_unconstrained() {
@@ -18,10 +18,10 @@ pub fn sha224_var<let N: u32>(msg: [u8; N], message_size: u64) -> sha224_constan
             __sha224_var(msg, message_size)
         }
     } else {
-        let (mut h, mut msg_block) =
+        let (h, msg_block) =
             process_full_blocks(msg, message_size, sha224_constants::INITIAL_STATE_SHA224);
 
-        let hash: HASH = finalize_sha256_blocks::<N>(message_size, h, msg_block);
+        let hash: HASH = finalize_sha256_blocks(message_size, h, msg_block);
         // Convert 32-byte hash to 28-byte hash for SHA-224
         let mut hash_sha224: sha224_constants::HASH_SHA224 = [0; 28];
         for i in 0..28 {
@@ -36,7 +36,10 @@ unconstrained fn __sha224_var<let N: u32>(
     msg: [u8; N],
     message_size: u32,
 ) -> sha224_constants::HASH_SHA224 {
-    let hash = __sha_var(msg, message_size, sha224_constants::INITIAL_STATE_SHA224);
+    let (h, msg_block) =
+        process_full_blocks(msg, message_size, sha224_constants::INITIAL_STATE_SHA224);
+
+    let hash = finalize_sha256_blocks(message_size, h, msg_block);
     let mut hash_sha224: sha224_constants::HASH_SHA224 = [0; 28];
     for i in 0..28 {
         hash_sha224[i] = hash[i];
@@ -72,10 +75,10 @@ pub fn partial_sha224_var_end<let N: u32>(
 mod equivalence_test {
 
     #[test]
-    fn test_implementations_agree(msg: [u8; 100], message_size: u64) {
+    fn test_implementations_agree(msg: [u8; 100], message_size: u32) {
         let message_size = message_size % 100;
         // Safety: testing
-        let unconstrained_sha224 = unsafe { super::__sha224_var(msg, message_size as u32) };
+        let unconstrained_sha224 = unsafe { super::__sha224_var(msg, message_size) };
         let sha224 = super::sha224_var(msg, message_size);
         assert_eq(sha224, unconstrained_sha224);
     }

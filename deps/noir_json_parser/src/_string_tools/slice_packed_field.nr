@@ -595,14 +595,7 @@ pub fn get_last_limb_path<let OutputFields: u32>(last_limb_index: Field) -> [boo
     // For example, if last_limb_index is 3, it means there are 4 valid limbs, then path variable is 7 (i.e. 00000111)
     // The return value path_valid_output represents the reverse of this number in array form [1, 1, 1, 0, 0, 0, 0, 0]
     let path = LAST_LIMB_PATH[cast_num_to_u32(last_limb_index + 1)];
-    // nargo 1.0.0-beta.19 returns [u1; N] from to_le_bits; upstream
-    // (newer nargo) returns [bool; N]. Same bits.
-    let bits: [u1; OutputFields] = path.to_le_bits::<OutputFields>();
-    let mut out: [bool; OutputFields] = [false; OutputFields];
-    for i in 0..OutputFields {
-        out[i] = bits[i] == 1;
-    }
-    out
+    path.to_le_bits::<OutputFields>()
 }
 
 /**

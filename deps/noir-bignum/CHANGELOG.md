@@ -1,5 +1,86 @@
 # Changelog
 
+## [0.11.0](https://github.com/noir-lang/noir-bignum/compare/v0.10.0...v0.11.0) (2026-10-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* address audit issues ([#270](https://github.com/noir-lang/noir-bignum/issues/270))
+
+### Bug Fixes
+
+* Address audit issues ([#270](https://github.com/noir-lang/noir-bignum/issues/270)) ([1ddd7b0](https://github.com/noir-lang/noir-bignum/commit/1ddd7b0c79b50c40e6d8db512d52be4eef5a5fb2))
+* Skip Grumpkin modulus check in `to_field` when `MOD_BITS < 254` ([#272](https://github.com/noir-lang/noir-bignum/issues/272)) ([dacecea](https://github.com/noir-lang/noir-bignum/commit/dacecea946237c4e2e5b7d45f318fe9a1b9dd5f5))
+
+## [0.10.0](https://github.com/noir-lang/noir-bignum/compare/v0.9.2...v0.10.0) (2026-04-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* update poseidon2 dependency ([#263](https://github.com/noir-lang/noir-bignum/issues/263))
+
+### Bug Fixes
+
+* Update poseidon2 dependency ([#263](https://github.com/noir-lang/noir-bignum/issues/263)) ([b76ce95](https://github.com/noir-lang/noir-bignum/commit/b76ce951d258f76019d958aaef2413b308a0309b))
+
+## [0.9.2](https://github.com/noir-lang/noir-bignum/compare/v0.9.1...v0.9.2) (2026-02-20)
+
+
+### Bug Fixes
+
+* Update poseidon dependency to version v0.2.6 ([#259](https://github.com/noir-lang/noir-bignum/issues/259)) ([7fdfcf6](https://github.com/noir-lang/noir-bignum/commit/7fdfcf6080d0b698d692c0d9da76befd7d69c9ec))
+
+## [0.9.1](https://github.com/noir-lang/noir-bignum/compare/v0.9.0...v0.9.1) (2026-02-19)
+
+
+### Bug Fixes
+
+* Unnecessary comptime global & Update poseidon ([#257](https://github.com/noir-lang/noir-bignum/issues/257)) ([d438539](https://github.com/noir-lang/noir-bignum/commit/d438539bf6e29d52cc79f3165532a3c8404d3eeb))
+
+## [0.9.0](https://github.com/noir-lang/noir-bignum/compare/v0.8.3...v0.9.0) (2026-02-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* Dispatch to udiv from `Div` trait impl for bignums without a multiplicative inverse. ([#253](https://github.com/noir-lang/noir-bignum/issues/253))
+
+### Features
+
+* Barrett reduciton optimization ([#241](https://github.com/noir-lang/noir-bignum/issues/241)) ([e7d5cb0](https://github.com/noir-lang/noir-bignum/commit/e7d5cb0a8c150282bca0a2ef01429ffd7dbf11fb))
+* Re-export macro-required functions from pub(crate) modules ([#245](https://github.com/noir-lang/noir-bignum/issues/245)) ([c02db37](https://github.com/noir-lang/noir-bignum/commit/c02db375ceacb6f8f963c1aed6086c4c3acd9bab))
+* Remove redundant hinting of `result` on various operations ([#252](https://github.com/noir-lang/noir-bignum/issues/252)) ([9c4d299](https://github.com/noir-lang/noir-bignum/commit/9c4d299c2240da7f57387d329ef2e9a88784cc93))
+* Split params object to avoid passing unused data ([#249](https://github.com/noir-lang/noir-bignum/issues/249)) ([16d4ba6](https://github.com/noir-lang/noir-bignum/commit/16d4ba665232699083c4154de1c17c4a50eeac34))
+* Switch to gcd algorithm for `__invmod` ([#255](https://github.com/noir-lang/noir-bignum/issues/255)) ([2d2d6d7](https://github.com/noir-lang/noir-bignum/commit/2d2d6d7fe5b66d32f8ec52c9909dd85d2f84c0a0))
+
+
+### Bug Fixes
+
+* Dispatch to udiv from `Div` trait impl for bignums without a multiplicative inverse. ([#253](https://github.com/noir-lang/noir-bignum/issues/253)) ([cd4ad0e](https://github.com/noir-lang/noir-bignum/commit/cd4ad0e39f1dd9c63fde0186c01c5535a3724e2a))
+* Prevent infinite loop when inverting modulus value and add testing ([#256](https://github.com/noir-lang/noir-bignum/issues/256)) ([5293dc6](https://github.com/noir-lang/noir-bignum/commit/5293dc6471f7571485261e0255550a4b1fdb2390))
+
+## [0.8.3](https://github.com/noir-lang/noir-bignum/compare/v0.8.2...v0.8.3) (2025-12-04)
+
+
+### Bug Fixes
+
+* **expressions:** Document, clean up and restructure `evaluate_quadratic_expression` ([#232](https://github.com/noir-lang/noir-bignum/issues/232)) ([2affae1](https://github.com/noir-lang/noir-bignum/commit/2affae1bf72574e2cb2b55edf17ac2f1a05f93e6))
+* **udiv_mod:** Change `udiv_mod` expression evaluation method ([#235](https://github.com/noir-lang/noir-bignum/issues/235)) ([f7debae](https://github.com/noir-lang/noir-bignum/commit/f7debae5f3cc329377315457303196baea2f6db1))
+
+## [0.8.2](https://github.com/noir-lang/noir-bignum/compare/v0.8.1...v0.8.2) (2025-11-13)
+
+
+### Bug Fixes
+
+* Revert `batch_invert` ([#222](https://github.com/noir-lang/noir-bignum/issues/222)) ([fe25ca4](https://github.com/noir-lang/noir-bignum/commit/fe25ca4d2cb9178b67d3322fe19d0e53644cbfdf))
+
+## [0.8.1](https://github.com/noir-lang/noir-bignum/compare/v0.8.0...v0.8.1) (2025-11-13)
+
+
+### Features
+
+* Clean up and optimize `__barrett_reduction` ([#214](https://github.com/noir-lang/noir-bignum/issues/214)) ([e163efa](https://github.com/noir-lang/noir-bignum/commit/e163efac2f306296a4680979f64291079a5e6ef0))
+* Clean up and optimize arithmetic with flags  ([#217](https://github.com/noir-lang/noir-bignum/issues/217)) ([a44cf68](https://github.com/noir-lang/noir-bignum/commit/a44cf685013cf7ab16af43972367ee95f6eb457b))
+
 ## [0.8.0](https://github.com/noir-lang/noir-bignum/compare/v0.7.5...v0.8.0) (2025-08-14)
 
 

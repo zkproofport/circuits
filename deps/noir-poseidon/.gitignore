@@ -1,0 +1,7 @@
+target/
+proofs/
+
+Prover.toml
+Verifier.toml
+
+**/sponge.nr

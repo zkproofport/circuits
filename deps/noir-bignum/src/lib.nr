@@ -3,7 +3,7 @@ mod runtime_bignum;
 
 mod constants;
 
-// Pre-defined fields and bignums for people to use:
+// Pre-defined fields and `BigNum`s for people to use:
 pub mod fields;
 
 // Structs enabling people to define their own bignum params
@@ -16,6 +16,61 @@ pub(crate) mod utils;
 mod benchmarks;
 mod tests;
 
+// Internal functions required by derive macros for external crates
+// Exported through the `internal` submodule to make it clear they are not
+// intended for direct use by end users
+pub mod internal {
+    // Constrained operations
+    pub use crate::fns::constrained_ops::add;
+    pub use crate::fns::constrained_ops::assert_is_not_equal;
+    pub use crate::fns::constrained_ops::assert_is_not_zero;
+    pub use crate::fns::constrained_ops::assert_is_not_zero_integer;
+    pub use crate::fns::constrained_ops::cmp;
+    pub use crate::fns::constrained_ops::derive_from_seed;
+    pub use crate::fns::constrained_ops::div;
+    pub use crate::fns::constrained_ops::eq;
+    pub use crate::fns::constrained_ops::from_field;
+    pub use crate::fns::constrained_ops::is_zero;
+    pub use crate::fns::constrained_ops::is_zero_integer;
+    pub use crate::fns::constrained_ops::mul;
+    pub use crate::fns::constrained_ops::neg;
+    pub use crate::fns::constrained_ops::sqr;
+    pub use crate::fns::constrained_ops::sub;
+    pub use crate::fns::constrained_ops::udiv;
+    pub use crate::fns::constrained_ops::udiv_mod;
+    pub use crate::fns::constrained_ops::udiv_mod_unsafe;
+    pub use crate::fns::constrained_ops::udiv_unsafe;
+    pub use crate::fns::constrained_ops::umod;
+    pub use crate::fns::constrained_ops::umod_unsafe;
+    pub use crate::fns::constrained_ops::validate_in_field;
+    pub use crate::fns::constrained_ops::validate_in_range;
+
+    // Unconstrained operations
+    pub use crate::fns::unconstrained_ops::__add;
+    pub use crate::fns::unconstrained_ops::__derive_from_seed;
+    pub use crate::fns::unconstrained_ops::__div;
+    pub use crate::fns::unconstrained_ops::__eq;
+    pub use crate::fns::unconstrained_ops::__invmod;
+    pub use crate::fns::unconstrained_ops::__is_zero;
+    pub use crate::fns::unconstrained_ops::__mul;
+    pub use crate::fns::unconstrained_ops::__neg;
+    pub use crate::fns::unconstrained_ops::__pow;
+    pub use crate::fns::unconstrained_ops::__sqr;
+    pub use crate::fns::unconstrained_ops::__sqrt;
+    pub use crate::fns::unconstrained_ops::__sub;
+    pub use crate::fns::unconstrained_ops::__udiv_mod;
+
+    // Serialization functions
+    pub use crate::fns::serialization::from_be_bytes;
+    pub use crate::fns::serialization::from_be_bytes_unsafe;
+    pub use crate::fns::serialization::from_le_bytes;
+    pub use crate::fns::serialization::from_le_bytes_unsafe;
+    pub use crate::fns::serialization::to_be_bytes;
+    pub use crate::fns::serialization::to_be_bytes_unsafe;
+    pub use crate::fns::serialization::to_le_bytes;
+    pub use crate::fns::serialization::to_le_bytes_unsafe;
+}
+
 // Re-export the main structs so that users don't have to specify the paths
 pub use bignum::BigNum;
 pub use bignum::derive_bignum;
@@ -27,6 +82,26 @@ pub use fields::bls12_377Fr::BLS12_377_Fr;
 pub use fields::bls12_381Fq::BLS12_381_Fq;
 pub use fields::bls12_381Fr::BLS12_381_Fr;
 pub use fields::bn254Fq::BN254_Fq;
+pub use fields::brainpoolP192r1Fq::BrainpoolP192r1_Fq;
+pub use fields::brainpoolP192r1Fr::BrainpoolP192r1_Fr;
+pub use fields::brainpoolP192t1Fq::BrainpoolP192t1_Fq;
+pub use fields::brainpoolP192t1Fr::BrainpoolP192t1_Fr;
+pub use fields::brainpoolP224r1Fq::BrainpoolP224r1_Fq;
+pub use fields::brainpoolP224r1Fr::BrainpoolP224r1_Fr;
+pub use fields::brainpoolP224t1Fq::BrainpoolP224t1_Fq;
+pub use fields::brainpoolP224t1Fr::BrainpoolP224t1_Fr;
+pub use fields::brainpoolP256r1Fq::BrainpoolP256r1_Fq;
+pub use fields::brainpoolP256r1Fr::BrainpoolP256r1_Fr;
+pub use fields::brainpoolP256t1Fq::BrainpoolP256t1_Fq;
+pub use fields::brainpoolP256t1Fr::BrainpoolP256t1_Fr;
+pub use fields::brainpoolP384r1Fq::BrainpoolP384r1_Fq;
+pub use fields::brainpoolP384r1Fr::BrainpoolP384r1_Fr;
+pub use fields::brainpoolP384t1Fq::BrainpoolP384t1_Fq;
+pub use fields::brainpoolP384t1Fr::BrainpoolP384t1_Fr;
+pub use fields::brainpoolP512r1Fq::BrainpoolP512r1_Fq;
+pub use fields::brainpoolP512r1Fr::BrainpoolP512r1_Fr;
+pub use fields::brainpoolP512t1Fq::BrainpoolP512t1_Fq;
+pub use fields::brainpoolP512t1Fr::BrainpoolP512t1_Fr;
 pub use fields::ed25519Fq::ED25519_Fq;
 pub use fields::ed25519Fr::ED25519_Fr;
 pub use fields::mnt4_753Fq::MNT4_753_Fq;
@@ -35,12 +110,18 @@ pub use fields::mnt6_753Fq::MNT6_753_Fq;
 pub use fields::mnt6_753Fr::MNT6_753_Fr;
 pub use fields::pallasFq::Pallas_Fq;
 pub use fields::pallasFr::Pallas_Fr;
+pub use fields::secp192r1Fq::Secp192r1_Fq;
+pub use fields::secp192r1Fr::Secp192r1_Fr;
+pub use fields::secp224r1Fq::Secp224r1_Fq;
+pub use fields::secp224r1Fr::Secp224r1_Fr;
 pub use fields::secp256k1Fq::Secp256k1_Fq;
 pub use fields::secp256k1Fr::Secp256k1_Fr;
 pub use fields::secp256r1Fq::Secp256r1_Fq;
 pub use fields::secp256r1Fr::Secp256r1_Fr;
 pub use fields::secp384r1Fq::Secp384r1_Fq;
 pub use fields::secp384r1Fr::Secp384r1_Fr;
+pub use fields::secp521r1Fq::Secp521r1_Fq;
+pub use fields::secp521r1Fr::Secp521r1_Fr;
 pub use fields::U1024::U1024;
 pub use fields::U2048::U2048;
 pub use fields::U256::U256;

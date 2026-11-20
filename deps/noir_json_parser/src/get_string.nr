@@ -48,7 +48,7 @@ fn process_escape_sequences<let N: u32>(input: BoundedVec<u8, N>) -> BoundedVec<
 
     let num_removed_chars = N - result_ptr;
     let new_length = input.len() - num_removed_chars;
-    BoundedVec::from_parts_unchecked(result, new_length as u32)
+    BoundedVec::from_parts(result, new_length as u32)
 }
 
 #[test]
@@ -115,7 +115,7 @@ impl<let NumBytes: u32, let NumPackedFields: u32, let MaxNumTokens: u32, let Max
         }
         let parsed_string: [u8; StringBytes] = self.extract_string_entry(entry);
         let parsed_string: BoundedVec<u8, StringBytes> = process_escape_sequences(
-            BoundedVec::from_parts_unchecked(parsed_string, entry.json_length as u32),
+            BoundedVec::from_parts(parsed_string, entry.json_length as u32),
         );
 
         if exists {
@@ -143,10 +143,8 @@ impl<let NumBytes: u32, let NumPackedFields: u32, let MaxNumTokens: u32, let Max
             STRING_TOKEN as Field,
             "get_string_unchecked: entry exists but is not a string!",
         );
-        let parsed_string = BoundedVec::from_parts_unchecked(
-            self.extract_string_entry(entry),
-            entry.json_length as u32,
-        );
+        let parsed_string =
+            BoundedVec::from_parts(self.extract_string_entry(entry), entry.json_length as u32);
         process_escape_sequences(parsed_string)
     }
 
@@ -180,7 +178,7 @@ impl<let NumBytes: u32, let NumPackedFields: u32, let MaxNumTokens: u32, let Max
 
         let parsed_string: [u8; StringBytes] = self.extract_string_entry(entry);
         let parsed_string: BoundedVec<u8, StringBytes> = process_escape_sequences(
-            BoundedVec::from_parts_unchecked(parsed_string, entry.json_length as u32),
+            BoundedVec::from_parts(parsed_string, entry.json_length as u32),
         );
 
         if valid {
@@ -219,10 +217,9 @@ impl<let NumBytes: u32, let NumPackedFields: u32, let MaxNumTokens: u32, let Max
         );
 
         let parsed_string: [u8; StringBytes] = self.extract_string_entry(entry);
-        process_escape_sequences(BoundedVec::from_parts_unchecked(
-            parsed_string,
-            entry.json_length as u32,
-        ))
+        process_escape_sequences(
+            BoundedVec::from_parts(parsed_string, entry.json_length as u32),
+        )
     }
 
     /// if the root JSON is an object, get a nested string out of the JSON, which may be several keys deep
@@ -261,7 +258,7 @@ impl<let NumBytes: u32, let NumPackedFields: u32, let MaxNumTokens: u32, let Max
     {
         let entry = self.get_json_entry_unchecked(key);
         JSONValue {
-            value: BoundedVec::from_parts_unchecked(
+            value: BoundedVec::from_parts(
                 self.extract_string_entry(entry),
                 entry.json_length as u32,
             ),
@@ -282,7 +279,7 @@ impl<let NumBytes: u32, let NumPackedFields: u32, let MaxNumTokens: u32, let Max
         let parsed_string: [u8; StringBytes] = self.extract_string_entry(entry);
 
         let parsed_string: BoundedVec<u8, StringBytes> =
-            BoundedVec::from_parts_unchecked(parsed_string, entry.json_length as u32);
+            BoundedVec::from_parts(parsed_string, entry.json_length as u32);
 
         if exists {
             Option::some(
@@ -314,10 +311,7 @@ impl<let NumBytes: u32, let NumPackedFields: u32, let MaxNumTokens: u32, let Max
         if valid {
             Option::some(
                 JSONValue {
-                    value: BoundedVec::from_parts_unchecked(
-                        parsed_string,
-                        entry.json_length as u32,
-                    ),
+                    value: BoundedVec::from_parts(parsed_string, entry.json_length as u32),
                     value_type: entry.entry_type,
                 },
             )

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.3](https://github.com/noir-lang/keccak256/compare/v0.1.2...v0.1.3) (2026-01-27)
+
+
+### Features
+
+* Unroll loops to improve brillig runtime performance ([#14](https://github.com/noir-lang/keccak256/issues/14)) ([1c023d9](https://github.com/noir-lang/keccak256/commit/1c023d9e6a44b48d866058121d0d3581b795918a))
+
+## [0.1.2](https://github.com/noir-lang/keccak256/compare/v0.1.1...v0.1.2) (2026-01-07)
+
+
+### Bug Fixes
+
+* Correct Keccak256 padding edge case, replace rust tests with ts oracle tests, update benchmarks ([#7](https://github.com/noir-lang/keccak256/issues/7)) ([a0da722](https://github.com/noir-lang/keccak256/commit/a0da722056c8ce71b0016595bae1f243d90dc41d))
+
 ## [0.1.1](https://github.com/noir-lang/keccak256/compare/v0.1.0...v0.1.1) (2025-06-18)
 
 

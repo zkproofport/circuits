@@ -1,0 +1,163 @@
+{
+  "_comment": "One entry per library under deps/. scripts/check-deps.sh compares each folder with content_sha256 (offline) and with its upstream ref (--upstream). Update this file whenever a vendored copy changes.",
+  "deps": [
+    {
+      "dir": "keccak256",
+      "repo": "noir-lang/keccak256",
+      "ref": "v0.1.3",
+      "commit": "f64ab3af714aa1a1e2699243037e0f11fe5bf706",
+      "newest_reviewed": "v0.1.3",
+      "content_sha256": "1be0efa154bf76a911398a23413ec0395062bc73e4eb60f042b61236eb0d022a"
+    },
+    {
+      "dir": "sha256",
+      "repo": "noir-lang/sha256",
+      "ref": "v0.3.0",
+      "commit": "9442e5b6856f98b2ec029882d7e90199ecff91ba",
+      "newest_reviewed": "v0.3.0",
+      "content_sha256": "dffdcf9680277eb6ad605e796b70c467cce8a3bf4adee3f428b844369447f87c"
+    },
+    {
+      "dir": "poseidon",
+      "repo": "noir-lang/poseidon",
+      "ref": "v0.4.0",
+      "commit": "e105cdd5c79c222860d53c5dfdb8fa8012b291c0",
+      "newest_reviewed": "v0.4.0",
+      "content_sha256": "e4dd82f81914a93de099593289e0aa9c8325250e1200536b86a74688c42e4a78"
+    },
+    {
+      "dir": "noir_base64",
+      "repo": "noir-lang/noir_base64",
+      "ref": "v0.5.1",
+      "commit": "82737dc95c824fccc056c35e94c81d600f33ca1d",
+      "newest_reviewed": "v0.5.1",
+      "content_sha256": "7a9beb3d7c6252af01166559207be28a1bdd7be3c0f37c8da21c3ce3486eeced"
+    },
+    {
+      "dir": "noir_string_search",
+      "repo": "noir-lang/noir_string_search",
+      "ref": "d5a76b7f7b9b07640d1ebfa4f0b70075545ed3a1",
+      "commit": "d5a76b7f7b9b07640d1ebfa4f0b70075545ed3a1",
+      "newest_reviewed": "v0.3.3",
+      "content_sha256": "d2890e09c501940f8d60806ab062f4f17e67b5b2e123060c2720619a3c85d742",
+      "ref_is_tag": false,
+      "hold": "Pinned to main d5a76b7 (2026-11-11), not a tag: v0.3.3 calls `.as_slice()`, which nargo 1.0.0-beta.23 removed, and no release carries upstream's fix (6fcc547). The commit also brings deef741, a matcher fix (merge_offset when the needle fits in one chunk). Move to the next tag once published."
+    },
+    {
+      "dir": "noir_sort",
+      "repo": "noir-lang/noir_sort",
+      "ref": "v0.4.0",
+      "commit": "c094c77e5eebe0f5cdf72b5d9de0ff7b1def025e",
+      "newest_reviewed": "v0.4.0",
+      "content_sha256": "a0769b6b39b412b3b456428113b09a1181e300e387466112f267c8745b02798e"
+    },
+    {
+      "dir": "noir_check_shuffle",
+      "repo": "noir-lang/noir_check_shuffle",
+      "ref": "v0.2.1",
+      "commit": "473a7faf5d59443fc76db68a5c115b8161597784",
+      "newest_reviewed": "v0.2.1",
+      "content_sha256": "2ee42da9c41d4bb9f4ba5fa0676431fb26ed504e266f599444558150374f1a15"
+    },
+    {
+      "dir": "sha1",
+      "repo": "zac-williamson/sha1",
+      "ref": "v0.11",
+      "commit": "d510f33c8546488286946ed459b26b62f5a71f91",
+      "newest_reviewed": "v0.11",
+      "content_sha256": "31fc71b73154e4937be6aefdf8d71a585ec2a7e65fa8092503a68282484cf89d"
+    },
+    {
+      "dir": "sha512",
+      "repo": "zkpassport/sha512",
+      "ref": "v0.2.0",
+      "commit": "e92ffb473f3264529a0793770f63a09946df50cc",
+      "newest_reviewed": "v0.2.0",
+      "content_sha256": "31bc198f3f8ec45a2b03ea3aaf781b9b1c47d794db5f79aa56cf90077daec041"
+    },
+    {
+      "dir": "noir-bignum",
+      "repo": "zkpassport/noir-bignum",
+      "ref": "v0.11.0-1",
+      "commit": "d177cfb7959f2a0c93555ece9d6764521df1cca3",
+      "newest_reviewed": "v0.11.0-1",
+      "content_sha256": "bffb7ffc00fd5e73bc1b91fdd01cd45d90b953f5948c710e5b94bb4e8007b825"
+    },
+    {
+      "dir": "noir_bigcurve",
+      "repo": "zkpassport/noir_bigcurve",
+      "ref": "v0.15.0-1",
+      "commit": "72b471296bab0e92e3edf480e7a8e84a88710763",
+      "newest_reviewed": "v0.15.0-1",
+      "content_sha256": "e885b7c24f80293da5bdd9561f70622b1ce8d5bfad294f90e01fa398c45c3340"
+    },
+    {
+      "dir": "noir-ecdsa",
+      "repo": "zkpassport/noir-ecdsa",
+      "ref": "v0.5.1",
+      "commit": "83e1cc62d69358f095e84a340d0c2d64b6d0cd9b",
+      "newest_reviewed": "v0.5.1",
+      "content_sha256": "58847126ab2b72c47646db31aea2be92de9fa9676d0cf181515e3c23c5c066f5"
+    },
+    {
+      "dir": "noir_rsa",
+      "repo": "zkpassport/noir_rsa",
+      "ref": "v0.12.1",
+      "commit": "9aa85bd7228bd57e835e9add0d3edd3b19548310",
+      "newest_reviewed": "v0.12.1",
+      "content_sha256": "b4cb5715c24502db8bbc865250435c49d671bcbd474bfde1f72a756c36e5667f"
+    },
+    {
+      "dir": "noir-jwt",
+      "repo": "zkemail/noir-jwt",
+      "ref": "v0.5.1",
+      "commit": "6a020dcbe9032c52a0ffd53b02ece826a4e130e3",
+      "newest_reviewed": "v0.5.1",
+      "content_sha256": "7935fcff0f8876b2137cbe30222307c18ffd6d6066848ff23ba5fbb57ae9d431"
+    },
+    {
+      "dir": "nodash",
+      "repo": "olehmisar/nodash",
+      "ref": "v0.46.0",
+      "commit": "55b664ea25b151b286fd50f5a64e9c42d91c677c",
+      "newest_reviewed": "v0.46.0",
+      "content_sha256": "871061020deec3af881e05e3a6ddf2339ad7f0c1f912b7c6126d4c6ac4ef1453"
+    },
+    {
+      "dir": "noir_json_parser",
+      "repo": "zkpassport/noir_json_parser",
+      "ref": "v0.4.0-5",
+      "commit": "57bedcba33a43968762b8a8dc825adca9631678b",
+      "newest_reviewed": "v0.4.0-5",
+      "content_sha256": "31c8535a6774a42a52278ea569c668456d2f080614494bd08059050bb45831c9"
+    },
+    {
+      "dir": "pluto-aes-gcm",
+      "repo": "pluto/noir-aes-gcm",
+      "ref": "main",
+      "ref_is_tag": false,
+      "commit": "cbd84f6e82f9cc84cf14e1fc44f4cd4fa321ec27",
+      "newest_reviewed": "main",
+      "content_sha256": "1da00f72185b7345ece69d1af0f49bdb4151175407bebcfffc69ba434e4d45ff",
+      "hold": "Upstream publishes no releases; pinned to the main commit this fork started from."
+    },
+    {
+      "dir": "noir-poseidon",
+      "repo": "TaceoLabs/noir-poseidon",
+      "ref": "v0.6.1",
+      "commit": "23cf1f05cbebb78538c8e321ab3da306e3529923",
+      "newest_reviewed": "v0.8.0",
+      "content_sha256": "5224260782802b73186d828d419fdfd6806a0e1f0e383d72d6bc0989e836c3dc",
+      "hold": "v0.6.1 is what TaceoLabs/oprf-nr v1.0.0, v2.0.0 and main ask for (babyjubjub and oprf use its poseidon2 package). Reviewed up to v0.8.0 (2026-11-17): poseidon2 changes only drop unused `mut`; the rest is a renaming in the poseidon package (#5), an added eddsa_poseidon2 and CI. Move when oprf-nr moves."
+    },
+    {
+      "dir": "oprf-nr",
+      "repo": "TaceoLabs/oprf-nr",
+      "ref": "v2.0.0",
+      "commit": "fd37726215b59d3d4823ea7b1967b1da3525ed9d",
+      "newest_reviewed": "v2.0.0",
+      "content_sha256": "048bb2eae3bbb78e833c31b0096be09330207f5a1b3445e9b4fe9152004ebeca",
+      "hold": "v2.0.0 is what TACEO's public test network circuits use (TaceoLabs/oprf-testnet noir/*/Nargo.toml); it is NOT audited. v1.0.0 is the Least Authority audited tag (audits/ in the repo) and also compiles and passes its tests on nargo 1.0.0, but has the older API (verified_oprf takes the blinded response; no BabyJubJubPointInSubgroup). Prototype circuits only (oprf-request-auth-poc, oprf-nullifier-poc)."
+    }
+  ]
+}

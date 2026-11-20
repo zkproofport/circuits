@@ -1,23 +1,54 @@
-use super::keccak256;
+use super::{apply_keccak_padding, keccak256};
 
-#[export]
-fn test_keccak256_1(input: [u8; 1], len: u32) -> [u8; 32] {
-    keccak256(input, len)
+#[test]
+fn test_padding_no_collision() {
+    // Message size 134: padding bytes don't collide
+    // Expected: block_bytes[134] = 0x01, block_bytes[135] = 0x80
+    let mut block_bytes = [0; 136];
+    let real_max_blocks = (134 + 136) / 136;
+    apply_keccak_padding(&mut block_bytes, 134, real_max_blocks);
+
+    assert_eq(block_bytes[134], 0x01, "First padding byte should be 0x01");
+    assert_eq(block_bytes[135], 0x80, "Second padding byte should be 0x80");
 }
 
-#[export]
-fn test_keccak256_100(input: [u8; 100], len: u32) -> [u8; 32] {
-    keccak256(input, len)
+#[test]
+fn test_padding_collision_135() {
+    // Message size 135: padding bytes collide at position 135
+    // Expected: block_bytes[135] = 0x81
+    let mut block_bytes = [0; 272];
+    let real_max_blocks = (135 + 136) / 136;
+    apply_keccak_padding(&mut block_bytes, 135, real_max_blocks);
+
+    assert_eq(block_bytes[135], 0x81, "Combined padding byte should be 0x81");
+    // Ensure no stray 0x80 elsewhere
+    for i in 136..272 {
+        assert_eq(block_bytes[i], 0x00, "No padding beyond position 135");
+    }
 }
 
-#[export]
-fn test_keccak256_135(input: [u8; 135], len: u32) -> [u8; 32] {
-    keccak256(input, len)
+#[test]
+fn test_padding_zero_length() {
+    // Message size 0: padding starts immediately
+    // Expected: block_bytes[0] = 0x01, block_bytes[135] = 0x80
+    let mut block_bytes = [0; 136];
+    let real_max_blocks = (0 + 136) / 136;
+    apply_keccak_padding(&mut block_bytes, 0, real_max_blocks);
+
+    assert_eq(block_bytes[0], 0x01, "First padding byte at position 0");
+    assert_eq(block_bytes[135], 0x80, "Second padding byte at end of block");
 }
 
-#[export]
-fn test_keccak256_256(input: [u8; 256], len: u32) -> [u8; 32] {
-    keccak256(input, len)
+#[test]
+fn test_padding_full_block() {
+    // Message size 136: exactly fills one block, needs another for padding
+    // Expected: block_bytes[136] = 0x01, block_bytes[271] = 0x80
+    let mut block_bytes = [0; 272];
+    let real_max_blocks = (136 + 136) / 136;
+    apply_keccak_padding(&mut block_bytes, 136, real_max_blocks);
+
+    assert_eq(block_bytes[136], 0x01, "First padding byte after full block");
+    assert_eq(block_bytes[271], 0x80, "Second padding byte at end of next block");
 }
 
 #[test]
@@ -67,4 +98,29 @@ fn hash_longer_than_136_bytes() {
         0x40,
     ];
     assert_eq(keccak256(input, input.len()), result);
+}
+
+#[test]
+fn regression_8() {
+    // Input: 0000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000900090000c0000000000000640000000000000000000000000000000000
+    let input = [
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x09, 0x00, 0x09, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    let result = keccak256(input, input.len());
+
+    // Expected output: d693eba7f5dda99045988585154ccdc7cd379b394924138016d4a2ad74999d30
+    let expected_result = [
+        214, 147, 235, 167, 245, 221, 169, 144, 69, 152, 133, 133, 21, 76, 205, 199, 205, 55, 155,
+        57, 73, 36, 19, 128, 22, 212, 162, 173, 116, 153, 157, 48,
+    ];
+    assert_eq(result, expected_result);
 }
