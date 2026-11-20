@@ -1,0 +1,13 @@
+[package]
+name = "zktls_notary_libs"
+type = "lib"
+version = "0.1.0"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+# The claim logic of the zkTLS circuits, generic over the body prefix size.
+# Shared by the size-tier packages zktls-notary-1k, -2k and -4k, which differ
+# only in that size.
+[dependencies]
+sha256 = { path = "../deps/sha256" }
+keccak256 = { path = "../deps/keccak256" }

@@ -1,0 +1,11 @@
+[package]
+name = "zktls_notary_4k"
+type = "bin"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+# The 4k size tier of the zkTLS claim circuit: proves a claim over the first
+# 4096 bytes (or the whole body, when it is shorter) of a TLSNotary-committed
+# response body. All logic is in ../zktls-notary-libs.
+[dependencies]
+zktls_notary_libs = { path = "../zktls-notary-libs" }

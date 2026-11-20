@@ -1,0 +1,6 @@
+[package]
+name = "aes"
+type = "lib"
+authors = [""]
+
+[dependencies]

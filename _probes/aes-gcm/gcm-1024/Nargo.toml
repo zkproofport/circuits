@@ -1,0 +1,7 @@
+[package]
+name = "aes_gcm_1024"
+type = "bin"
+authors = [""]
+
+[dependencies]
+aes = { path = "../aes" }

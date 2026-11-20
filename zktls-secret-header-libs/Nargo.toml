@@ -1,0 +1,13 @@
+[package]
+name = "zktls_secret_header_libs"
+type = "lib"
+version = "0.1.0"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+# Proves that a hidden secret request-header value (an Authorization or Cookie value
+# the TLSNotary verifier never sees) opens its TLSNotary hash commitment and is a
+# single well-formed header value: no CR, LF or other control byte. Shared by the
+# size-tier packages zktls-secret-header-512 and -2k.
+[dependencies]
+sha256 = { path = "../deps/sha256" }

@@ -1,0 +1,11 @@
+[package]
+name = "zktls_secret_header_2k"
+type = "bin"
+authors = ["zkproofport"]
+compiler_version = ">=1.0.0"
+
+# The 2k tier of the secret header value proof: a hidden Authorization or Cookie
+# value of at most 2048 bytes opens its TLSNotary commitment and holds no control byte.
+# All logic is in ../zktls-secret-header-libs.
+[dependencies]
+zktls_secret_header_libs = { path = "../zktls-secret-header-libs" }

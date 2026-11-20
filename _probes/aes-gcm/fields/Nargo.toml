@@ -1,0 +1,7 @@
+[package]
+name = "aes_fields"
+type = "bin"
+authors = [""]
+
+[dependencies]
+aes = { path = "../aes" }

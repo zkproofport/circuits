@@ -1,0 +1,7 @@
+[package]
+name = "aes_ctr_1024"
+type = "bin"
+authors = [""]
+
+[dependencies]
+aes = { path = "../aes" }
