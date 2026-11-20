@@ -191,7 +191,9 @@ refuse stmt_coinbase_replay_server    "Statement signature is invalid"
 refuse stmt_coinbase_replay_app       "Statement signature is invalid"
 refuse server_other_key               "Statement signature is invalid"
 refuse server_high_s                  "Statement signature is invalid"
-refuse server_zero_signature          "Signature provided for ECDSA verification is zero"
+# nargo 1.0.0 lets a zero signature reach the circuit's assert (beta.19's solver
+# refused it first with "Signature provided for ECDSA verification is zero").
+refuse server_zero_signature          "Statement signature is invalid"
 refuse server_garbage_signature       "Statement signature is invalid"
 refuse kind_zero                      "Unknown statement signer kind"
 refuse kind_unknown                   "Unknown statement signer kind"

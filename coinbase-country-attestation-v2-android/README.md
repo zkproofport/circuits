@@ -5,9 +5,9 @@ the revocation statement's signer.
 
 The wallet signature over the request, Coinbase's `attestCountry`
 transaction, the country list, the 227-byte statement ("ZKProofport/AA/1",
-country appended) and the nullifier are `../coinbase-country-v2-libs`, shared
-with `../coinbase-country-attestation-v2`. The public inputs are the same 215
-values in the same order.
+country appended) are `../coinbase-country-v2-libs`, and the nullifier is
+`../oprf-nullifier-libs`, shared with `../coinbase-country-attestation-v2`.
+The public inputs are the same 155 values in the same order.
 
 The statement is signed exactly as in `../coinbase-attestation-v2-android`:
 SHA256withECDSA by an Android Keystore key that `../android-key-attestation`
@@ -21,6 +21,10 @@ valid at `attested_at`).
 `statement_sig` (r || s, low s), then the `AndroidChain` fields: `ca2_tbs`,
 `ca2_tbs_len`, `ca2_sig`, `ca3_tbs`, `ca3_tbs_len`, `ca3_sig`, `att_tbs`,
 `att_tbs_len`, `att_sig`, `leaf_tbs`, `leaf_tbs_len`, `leaf_sig`.
+
+Then the OPRF nullifier's (`../oprf-nullifier-libs`): `oprf_public_key_x`,
+`oprf_public_key_y`, `oprf_beta`, `oprf_dlog_e`, `oprf_dlog_s`,
+`oprf_response_x`, `oprf_response_y`.
 
 ## Size
 

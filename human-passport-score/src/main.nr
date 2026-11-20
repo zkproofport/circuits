@@ -8,32 +8,25 @@
 // The design, the trust assumptions and what this does NOT prove (revocation,
 // a newer lower score) are in ../README.md.
 //
-// SHAPE. GIWA's six public inputs, unchanged in meaning and order, then three
-// more. The wallet part (EIP-712 action or personal_sign over signal_hash, and
-// the wallet + circuit-tag nullifier) is the shared code giwa_attestation
-// uses. The issuer part lives in human-passport-libs so the real-chain check
-// (../human-passport-real-issuer-check/) runs the same code.
+// SHAPE. giwa_attestation's public inputs, in its order (the wallet's request,
+// the issuer root, then the OPRF nullifier's four), then three more. The
+// wallet part (EIP-712 action or personal_sign over signal_hash) is the shared
+// code giwa_attestation uses; the nullifier is ../oprf-nullifier-libs, as in
+// every wallet credential circuit. The issuer part lives in human-passport-libs
+// so the real-chain check (../human-passport-real-issuer-check/) runs the same
+// code.
 
 use std;
-use ::coinbase_libs::nullifier::verify_wallet_nullifier;
 use ::coinbase_libs::signed_message::signed_digest;
 use ::coinbase_libs::ethereum::derive_address_from_pubkey;
 use ::human_passport_libs::request::PassportRequest;
 use ::human_passport_libs::issuer::verify_score_statement;
+use ::oprf_nullifier_libs::{OprfAnswer, verify_oprf_nullifier};
 
 /// The largest scoreV2 `data` this circuit hashes. The issuer signs
 /// keccak256(data) and data carries every stamp, so this cap decides which
 /// passports can be proved at all. Why this number: ../README.md, "Data cap".
 global MAX_DATA_BYTES: u32 = 10240;
-
-/// keccak256("human_passport_score"). Compiled in: the nullifier has no input
-/// the prover can vary.
-global CIRCUIT_TAG: [u8; 32] = [
-    0x21, 0x84, 0x73, 0xb2, 0xbf, 0x29, 0xe7, 0xda,
-    0x0a, 0xed, 0x1e, 0x31, 0xdc, 0x0c, 0xc1, 0x12,
-    0xbf, 0xdd, 0x2e, 0xee, 0x2d, 0xa1, 0xdf, 0x4b,
-    0x85, 0x0e, 0x79, 0x8f, 0x60, 0x93, 0x96, 0x07,
-];
 
 fn main(
     // ============ Public inputs (order is the ABI) ============
@@ -45,9 +38,14 @@ fn main(
     action_hash: pub [u8; 32],
     // Root over keccak(issuer ++ passport_domain_separator ++ schema_uid).
     signer_list_merkle_root: pub [u8; 32],
-    // Sybil domain; nullifier = keccak(keccak(wallet ++ CIRCUIT_TAG) ++ scope).
-    scope: pub [u8; 32],
-    nullifier: pub [u8; 32],
+    // The OPRF nullifier (../oprf-nullifier-libs): the hash of the OPRF key the
+    // verifier pins for this proof type, the nullifier's domain and scope
+    // (keccak256(string) mod p each), and the nullifier, one per wallet per
+    // (domain, scope) under that key.
+    oprf_key_hash: pub Field,
+    domain: pub Field,
+    scope: pub Field,
+    nullifier: pub Field,
     // Threshold in Passport's units: score * 10^4 (20.0 -> 200000).
     min_score: pub u32,
     // Passport scorer ("community") id the score was computed by.
@@ -80,6 +78,15 @@ fn main(
     issuer_merkle_proof: [[u8; 32]; 8],
     issuer_leaf_index: u32,
     issuer_merkle_depth: u32,
+
+    // The OPRF nodes' answer for this wallet's query, and the blinding factor.
+    oprf_public_key_x: Field,
+    oprf_public_key_y: Field,
+    oprf_beta: Field,
+    oprf_dlog_e: Field,
+    oprf_dlog_s: Field,
+    oprf_response_x: Field,
+    oprf_response_y: Field,
 ) {
     // PART 1: this wallet signed this request.
     let derived = derive_address_from_pubkey(user_pubkey_x, user_pubkey_y);
@@ -123,6 +130,21 @@ fn main(
         issuer_merkle_depth,
     );
 
-    // PART 3: one nullifier per wallet per scope.
-    verify_wallet_nullifier(user_address, CIRCUIT_TAG, scope, nullifier);
+    // PART 3: one nullifier per wallet per (domain, scope), from the OPRF.
+    verify_oprf_nullifier(
+        user_address,
+        domain,
+        scope,
+        oprf_key_hash,
+        nullifier,
+        OprfAnswer {
+            public_key_x: oprf_public_key_x,
+            public_key_y: oprf_public_key_y,
+            beta: oprf_beta,
+            dlog_e: oprf_dlog_e,
+            dlog_s: oprf_dlog_s,
+            response_x: oprf_response_x,
+            response_y: oprf_response_y,
+        },
+    );
 }

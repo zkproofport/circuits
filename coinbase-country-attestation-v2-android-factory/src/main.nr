@@ -8,7 +8,7 @@
 // (../statement-signer verify_statement_android_factory), as in
 // ../coinbase-attestation-v2-android-factory.
 
-use coinbase_libs::nullifier::verify_wallet_nullifier;
+use oprf_nullifier_libs::{OprfAnswer, verify_oprf_nullifier};
 use coinbase_country_v2_libs::{
     check_country_list, check_request_and_country_tx, CIRCUIT_TAG, COUNTRY_LIST_MAX,
 };
@@ -21,7 +21,7 @@ use statement_signer::{
 fn main(
     // ============ Public Inputs ============
     // coinbase_attestation v2's order with v1's country fields where v1 had
-    // them: after the signer root, before scope and nullifier.
+    // them: after the signer root, before the OPRF nullifier inputs.
     signal_hash: pub [u8; 32],
     domain_separator: pub [u8; 32],
     action_hash: pub [u8; 32],
@@ -31,8 +31,15 @@ fn main(
     country_list_length: pub u32,
     // true: the attested country must be in the list; false: must not be.
     is_included: pub bool,
-    scope: pub [u8; 32],
-    nullifier: pub [u8; 32],
+    // The OPRF nullifier (../oprf-nullifier-libs): the hash of the OPRF key the
+    // verifier pins for this proof type, the nullifier's domain and scope
+    // (keccak256(string) mod p each), and the nullifier -- one per wallet per
+    // (domain, scope) under that key, which nobody without the key can compute
+    // from an address.
+    oprf_key_hash: pub Field,
+    domain: pub Field,
+    scope: pub Field,
+    nullifier: pub Field,
     // ============ Public Input (the statement's time) ============
     // When the signer saw the attestation unrevoked (unix seconds). The
     // verifier enforces freshness against its own clock.
@@ -76,6 +83,15 @@ fn main(
     // prover inputs pinned by hash in ../statement-signer (Barretenberg cannot
     // build them as constants; see verify_statement_android_factory).
     play_integrity_key: [u8; 64],
+    // The OPRF nodes' answer for this wallet's query, and the blinding factor
+    // (private; ../oprf-nullifier-libs checks them).
+    oprf_public_key_x: Field,
+    oprf_public_key_y: Field,
+    oprf_beta: Field,
+    oprf_dlog_e: Field,
+    oprf_dlog_s: Field,
+    oprf_response_x: Field,
+    oprf_response_y: Field,
 ) {
     // PARTS 1-2: this wallet signed THIS request; Coinbase's attestCountry, and the list
     let (message_hash, country_code) = check_request_and_country_tx(
@@ -106,7 +122,7 @@ fn main(
         user_address,
         attested_at,
         message_hash,
-        scope,
+        scope.to_be_bytes::<32>(),
         country_code,
     );
     verify_statement_android_factory(
@@ -133,6 +149,21 @@ fn main(
         play_integrity_key,
     );
 
-    // PART 4: one nullifier per wallet per scope
-    verify_wallet_nullifier(user_address, CIRCUIT_TAG, scope, nullifier);
+    // PART 4: one nullifier per wallet per (domain, scope), from the OPRF
+    verify_oprf_nullifier(
+        user_address,
+        domain,
+        scope,
+        oprf_key_hash,
+        nullifier,
+        OprfAnswer {
+            public_key_x: oprf_public_key_x,
+            public_key_y: oprf_public_key_y,
+            beta: oprf_beta,
+            dlog_e: oprf_dlog_e,
+            dlog_s: oprf_dlog_s,
+            response_x: oprf_response_x,
+            response_y: oprf_response_y,
+        },
+    );
 }

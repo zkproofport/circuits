@@ -3,7 +3,7 @@
 // Attest or the AI server; coinbase-attestation-v2-android: Android key
 // attestation). A package's main calls, in this order:
 //   check_request_and_tx -> check_client_data -> <its signer check over
-//   client_data> -> verify_wallet_nullifier(user_address, CIRCUIT_TAG, ...)
+//   client_data> -> verify_oprf_nullifier(user_address, ...) (../oprf-nullifier-libs)
 // The order is coinbase-attestation-v2's before this library existed, so its
 // constraint system (and its deployed verifiers' vk) did not change.
 
@@ -19,8 +19,9 @@ use coinbase_libs::ethereum::{COINBASE_ATTESTER_CONTRACT, derive_address_from_pu
 global ATTEST_ACCOUNT_SELECTOR: [u8; 4] = [0x56, 0xfe, 0xed, 0x5e];
 
 /// keccak256("coinbase_attestation"): the canonical id, not a package name.
-/// proofport-ai's computeWalletNullifier(address, circuitId) derives the tag
-/// from the id, so every package serving the id uses this tag.
+/// The statement kind at clientData offset 16, the same in every package
+/// serving the id. (It no longer enters the nullifier: that is the OPRF's, keyed
+/// per proof type.)
 pub global CIRCUIT_TAG: [u8; 32] = [
     0x16, 0x3f, 0xeb, 0x85, 0xbf, 0xfe, 0x62, 0x69, 0x88, 0x19, 0x7d, 0x1c, 0x5f, 0x0b, 0x70, 0xdc,
     0x10, 0xf5, 0x93, 0xd7, 0x08, 0xab, 0x0e, 0xfb, 0xcd, 0xfa, 0x06, 0x81, 0x4d, 0x28, 0x6b, 0xe2,

@@ -135,7 +135,9 @@ refuse stmt_other_time                 "Statement signature is invalid"
 refuse stmt_coinbase_replay            "Statement signature is invalid"
 refuse stmt_signed_by_other_key        "Statement signature is invalid"
 refuse stmt_high_s                     "Statement signature is invalid"
-refuse stmt_zero_signature             "Signature provided for ECDSA verification is zero"
+# nargo 1.0.0 lets a zero signature reach the circuit's assert (beta.19's solver
+# refused it first with "Signature provided for ECDSA verification is zero").
+refuse stmt_zero_signature             "Statement signature is invalid"
 
 echo ""
 echo "Refused, the key description:"

@@ -99,8 +99,16 @@ pub fn verify_integrity_token<let P: u32>(
     );
 
     // ---- the verdict ----
+    // Bytes past `len` are zeroed: decode_var accepts only 0 there, and nargo
+    // 1.0.0's from_parts no longer zeroes them (it did up to 1.0.0-beta.19).
+    let mut payload_b64: [u8; PAYLOAD_B64_MAX_LEN] = [0; PAYLOAD_B64_MAX_LEN];
+    for i in 0..PAYLOAD_B64_MAX_LEN {
+        if i < len {
+            payload_b64[i] = token.payload_b64[i];
+        }
+    }
     let payload: BoundedVec<u8, 1026> =
-        BASE64_URL_DECODER::decode_var(BoundedVec::from_parts(token.payload_b64, len));
+        BASE64_URL_DECODER::decode_var(BoundedVec::from_parts(payload_b64, len));
     assert(payload.len() <= PAYLOAD_MAX_LEN, "Integrity verdict is longer than the circuit reads");
     // The parser reads a fixed 1 KB; bytes past the payload are spaces.
     let mut text: [u8; PAYLOAD_MAX_LEN] = [32; PAYLOAD_MAX_LEN];

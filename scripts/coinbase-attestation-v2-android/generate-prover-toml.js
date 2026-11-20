@@ -34,6 +34,8 @@ const path = require('path');
 const { ethers } = require('../node_modules/ethers');
 const A = require('../statement-signer/android');
 const anchors = require('../statement-signer/anchors');
+const oprf = require('../oprf-nullifier/oprf');
+const { signalHash: signalHashOf, FIXTURE_REQUEST_ID } = require('../lib/signal-hash');
 const chainJs = require('../android-key-attestation/chain');
 
 const opt = name => {
@@ -135,15 +137,17 @@ function main() {
   const otherCountry = PROFILE.country ? (country.toString('ascii') === 'US' ? 'JP' : 'US') : null;
   const LIST = PROFILE.country ? { list: [otherCountry, country.toString('ascii')], length: 2, included: true } : null;
   const pub = ethers.getBytes(wallet.signingKey.publicKey);
-  const scope = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes(SCOPE_STRING)));
-  const secret = ethers.getBytes(ethers.keccak256(ethers.concat([userAddress, CIRCUIT_TAG])));
-  const nullifier = ethers.getBytes(ethers.keccak256(ethers.concat([secret, scope])));
+  // The OPRF nullifier (../oprf-nullifier): the circuit id's test key, the
+  // nodes' answer computed locally. The statement binds the scope Field's 32
+  // bytes big-endian (keccak256(SCOPE_STRING) mod p).
+  const oprfValues = oprf.values({ circuitId: CIRCUIT_ID, address: ethers.hexlify(userAddress), scopeString: SCOPE_STRING });
+  const scope = oprf.fieldBytes(oprfValues.scope);
   const ZERO32 = new Uint8Array(32);
-  const signalHash = ethers.getBytes(ethers.solidityPackedKeccak256(
-    ['address', 'string', 'string'], [wallet.address, SCOPE_STRING, CIRCUIT_ID]));
+  // signal_hash by the app's rule (../lib/signal-hash.js): no wallet in it.
+  const signalHash = signalHashOf({ scope: SCOPE_STRING, circuitId: CIRCUIT_ID, requestId: FIXTURE_REQUEST_ID });
   const domain = { name: `ZKProofport ${PROFILE.label} fixture`, version: '1', chainId: 8453, verifyingContract: '0x0000000000000000000000000000000000000001' };
-  const types = { Join: [{ name: 'member', type: 'address' }, { name: 'nonce', type: 'string' }] };
-  const message = { member: wallet.address, nonce: 'coinbase-attestation-v2-android-1' };
+  const types = { Join: [{ name: 'group', type: 'string' }, { name: 'nonce', type: 'string' }] };
+  const message = { group: 'ZKProofport fixture group', nonce: 'coinbase-attestation-v2-android-1' };
   const requests = {
     action: {
       signal: ZERO32,
@@ -252,8 +256,7 @@ signal_hash = ${arr(req.signal)}
 domain_separator = ${arr(req.domainSeparator)}
 action_hash = ${arr(req.actionHash)}
 signer_list_merkle_root = ${arr(cb.signer_list_merkle_root)}
-${countryToml}scope = ${arr(scope)}
-nullifier = ${arr(nullifier)}
+${countryToml}${oprf.publicToml(oprfValues)}
 attested_at = ${at}
 
 user_address = ${arr(userAddress)}
@@ -274,6 +277,8 @@ client_data = ${arr(cd)}
 statement_sig = ${arr(sig)}
 
 ${signerToml}
+
+${oprf.privateToml(oprfValues)}
 `;
   }
 
@@ -320,7 +325,7 @@ ${signerToml}
     client_revoked: { clientData: clientData(ACT, { revoked: 1 }) },
     client_wallet_mismatch: { clientData: clientData(ACT, { wallet: otherWallet }) },
     client_other_request: { clientData: clientData(ACT, { digest: requests.noAction.digest }) },
-    client_other_scope: { clientData: clientData(ACT, { scope: ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('another-scope'))) }) },
+    client_other_scope: { clientData: clientData(ACT, { scope: oprf.fieldBytes(oprf.fieldOfString('another-scope')) }) },
     timestamp_changed: { statementTime: attestedAt + 1 },
     oidc_statement_replay: { clientData: oidcStatement.subarray(0, PROFILE.clientDataLen), signed: oidcStatement },
     stmt_signed_by_other_key: { otherSigner: true },

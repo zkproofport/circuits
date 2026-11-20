@@ -45,18 +45,22 @@
 //
 // THE NULLIFIER
 //
-// keccak(keccak(user_address ++ CIRCUIT_TAG) ++ scope), with CIRCUIT_TAG
-// compiled in. One wallet in one scope has exactly one nullifier and there is
-// no input to vary. The tag is this circuit's name, so the same wallet proving
-// something else elsewhere is not linkable to this proof.
+// The OPRF nullifier (../oprf-nullifier-libs): Poseidon2 of the query
+// (address, domain, scope) and the OPRF nodes' answer, whose Chaum-Pedersen
+// proof the circuit checks. One wallet in one (domain, scope) has exactly one
+// nullifier under the key, there is no input to vary, and nobody without the
+// key can compute it from an address -- the keccak nullifier this circuit had
+// before could be recomputed for every attested address. The key is this proof
+// type's own (its hash is public), so the same wallet proving something else
+// elsewhere is not linkable to this proof.
 
-use dep::std;
-use dep::keccak256::keccak256;
-use dep::coinbase_libs::eip1559_tx_parser;
-use dep::coinbase_libs::merkle;
-use dep::coinbase_libs::nullifier::verify_wallet_nullifier;
-use dep::coinbase_libs::signed_message::signed_digest;
-use dep::coinbase_libs::ethereum::derive_address_from_pubkey;
+use oprf_nullifier_libs::{OprfAnswer, verify_oprf_nullifier};
+use std;
+use keccak256::keccak256;
+use coinbase_libs::eip1559_tx_parser;
+use coinbase_libs::merkle;
+use coinbase_libs::signed_message::signed_digest;
+use coinbase_libs::ethereum::derive_address_from_pubkey;
 
 /// MockGiwaAttester address on GIWA Sepolia (the 'to' address of the attest tx).
 /// 0x6646d970499BBeD728636823A5A7e551E811b414
@@ -68,15 +72,6 @@ global GIWA_ATTESTER_CONTRACT: [u8; 20] = [
 
 /// Function selector for "attestAccount(address)" -- 0x56feed5e
 global ATTEST_ACCOUNT_SELECTOR: [u8; 4] = [0x56, 0xfe, 0xed, 0x5e];
-
-/// keccak256("giwa_attestation"). Compiled in, never supplied: this is the
-/// half of the nullifier's secret preimage that used to be a free input.
-global CIRCUIT_TAG: [u8; 32] = [
-    0xbb, 0xe9, 0xbf, 0x6a, 0x49, 0x13, 0xc0, 0xc3,
-    0x02, 0xcb, 0x2a, 0x16, 0x28, 0x8d, 0xcc, 0x91,
-    0x73, 0x08, 0xee, 0x9a, 0x2a, 0xc3, 0x7b, 0xb6,
-    0xc8, 0x23, 0xb8, 0x60, 0xe1, 0x5c, 0x79, 0x13,
-];
 
 fn main(
     // ============ Public Inputs ============
@@ -99,11 +94,15 @@ fn main(
     // Root of the dApp's current list of accepted GIWA attester addresses.
     signer_list_merkle_root: pub [u8; 32],
 
-    // Sybil domain. One nullifier per (wallet, scope).
-    scope: pub [u8; 32],
-
-    // keccak(keccak(user_address ++ CIRCUIT_TAG) ++ scope)
-    nullifier: pub [u8; 32],
+    // The OPRF nullifier (../oprf-nullifier-libs): the hash of the OPRF key the
+    // verifier pins for this proof type, the nullifier's domain and scope
+    // (keccak256(string) mod p each), and the nullifier -- one per wallet per
+    // (domain, scope) under that key, which nobody without the key can compute
+    // from an address.
+    oprf_key_hash: pub Field,
+    domain: pub Field,
+    scope: pub Field,
+    nullifier: pub Field,
 
     // ============ Private Inputs ============
 
@@ -119,6 +118,15 @@ fn main(
     coinbase_signer_merkle_proof: [[u8; 32]; 8],
     coinbase_signer_leaf_index: u32,
     merkle_proof_depth: u32,
+    // The OPRF nodes' answer for this wallet's query, and the blinding factor
+    // (private; ../oprf-nullifier-libs checks them).
+    oprf_public_key_x: Field,
+    oprf_public_key_y: Field,
+    oprf_beta: Field,
+    oprf_dlog_e: Field,
+    oprf_dlog_s: Field,
+    oprf_response_x: Field,
+    oprf_response_y: Field,
 ) {
     // ===================================================================
     // PART 1: this wallet signed THIS message, and the signature is real
@@ -195,8 +203,23 @@ fn main(
     assert(calldata_address == user_address, "Calldata address does not match user_address");
 
     // ===================================================================
-    // PART 4: one nullifier per wallet per scope, with nothing to choose
+    // PART 4: one nullifier per wallet per (domain, scope), from the OPRF
     // ===================================================================
 
-    verify_wallet_nullifier(user_address, CIRCUIT_TAG, scope, nullifier);
+    verify_oprf_nullifier(
+        user_address,
+        domain,
+        scope,
+        oprf_key_hash,
+        nullifier,
+        OprfAnswer {
+            public_key_x: oprf_public_key_x,
+            public_key_y: oprf_public_key_y,
+            beta: oprf_beta,
+            dlog_e: oprf_dlog_e,
+            dlog_s: oprf_dlog_s,
+            response_x: oprf_response_x,
+            response_y: oprf_response_y,
+        },
+    );
 }

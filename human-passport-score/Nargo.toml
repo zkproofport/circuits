@@ -8,3 +8,4 @@ authors = ["zkproofport"]
 keccak256 = { path = "../deps/keccak256" }
 coinbase_libs = { path = "../coinbase-libs" }
 human_passport_libs = { path = "../human-passport-libs" }
+oprf_nullifier_libs = { path = "../oprf-nullifier-libs" }

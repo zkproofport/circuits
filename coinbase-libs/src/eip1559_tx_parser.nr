@@ -12,7 +12,7 @@
 // - Adding support for other transaction types would increase circuit complexity
 //   without practical benefit for the Coinbase attestation use case
 
-use dep::keccak256::keccak256;
+use keccak256::keccak256;
 use crate::rlp;
 
 /// EIP-1559 Transaction Field Indices (12 fields total)

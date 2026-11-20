@@ -15,7 +15,7 @@ This repository contains executable circuit code, shared Noir libraries, generat
 
 [`dojang-playground`](dojang-playground) is a GIWA Sepolia demo circuit outside the CIP mapping.
 
-[`coinbase-attestation-v2`](coinbase-attestation-v2) is the next version of CIP-1's circuit: revocation bound by an Apple App Attest or AI-server statement, an optional EIP-712 action, and a wallet nullifier. Its README has the statement format and measurements.
+[`coinbase-attestation-v2`](coinbase-attestation-v2) is the next version of CIP-1's circuit: revocation bound by an Apple App Attest or AI-server statement, an optional EIP-712 action, and the OPRF nullifier. Its README has the statement format and measurements.
 
 [`coinbase-country-attestation-v2`](coinbase-country-attestation-v2) is the same next version of CIP-2's circuit: the statement also carries the country the signer saw on the unrevoked attestation, and the country list rule is unchanged. [`coinbase-country-attestation-v2-android`](coinbase-country-attestation-v2-android) and [`coinbase-country-attestation-v2-android-factory`](coinbase-country-attestation-v2-android-factory) are its Android signers; the shared checks are [`coinbase-country-v2-libs`](coinbase-country-v2-libs).
 
@@ -23,13 +23,13 @@ This repository contains executable circuit code, shared Noir libraries, generat
 
 [`oidc-domain-attestation-android`](oidc-domain-attestation-android) and [`coinbase-attestation-v2-android`](coinbase-attestation-v2-android) serve the same circuit ids, public inputs, statements and nullifiers as `oidc-domain-attestation` and `coinbase-attestation-v2`; only the statement's signer differs. There it is an Android phone's hardware-backed key, proven in-circuit by Android key attestation ([`android-key-attestation`](android-key-attestation)): a Remote Key Provisioning chain under Google's Key Attestation CA1 root, valid at the statement's time, for a key generated in TEE or StrongBox by `com.masselabs.zkproofport` signed with its Play app signing certificate, on a device with a locked bootloader and verified boot. [`oidc-domain-attestation-android-factory`](oidc-domain-attestation-android-factory) and [`coinbase-attestation-v2-android-factory`](coinbase-attestation-v2-android-factory) serve the same ids for devices whose attestation keys were provisioned at the factory (launched with Android 12 or earlier): a chain under Google's RSA root plus a Google Play Integrity verdict for the same statement ([`play-integrity`](play-integrity)). Each package has its own verifier (2^21). The token and Coinbase checks are shared libraries ([`oidc-libs`](oidc-libs), [`coinbase-v2-libs`](coinbase-v2-libs)); [`statement-signer`](statement-signer) pins every trust anchor.
 
-`coinbase-libs`, `coinbase-v2-libs`, `oidc-libs`, `app-attest-libs`, `android-key-attestation`, `play-integrity` and `statement-signer` are shared libraries. `coinbase-kyc` is an older reference-only circuit. `_archived-poc` and `zktls` are outside the current credential CIP mapping.
+`coinbase-libs`, `coinbase-v2-libs`, `oidc-libs`, `app-attest-libs`, `android-key-attestation`, `play-integrity`, `statement-signer` and `oprf-nullifier-libs` are shared libraries. `_archived-poc` (which holds the retired `coinbase-kyc` reference circuit) and `zktls` are outside the current credential CIP mapping.
 
 ## Implemented circuits
 
 ### Coinbase KYC attestation — Reference
 
-Proves control of an address named by a signed Coinbase `attestAccount(address)` transaction while keeping the address, transaction, and signatures private. The circuit verifies user ownership, EIP-1559 transaction structure and signature, signer membership in a public Merkle root, target calldata, and a signal- and scope-bound nullifier.
+Proves control of an address named by a signed Coinbase `attestAccount(address)` transaction while keeping the address, transaction, and signatures private. The circuit verifies user ownership, EIP-1559 transaction structure and signature, signer membership in a public Merkle root, target calldata, and the OPRF nullifier for that address.
 
 ### Coinbase country predicate — Reference
 
@@ -51,27 +51,34 @@ Proves that a wallet signed the request and that the same key signed a GIWA Sepo
 
 ### Human Passport score — Beta
 
-Proves that the signing wallet holds a Human Passport scoreV2 attestation whose EIP-712 request was signed by an issuer in a public Merkle root of (issuer, GitcoinVerifier domain, schema) leaves, with `score >= min_score` for a public scorer id and `now < expirationTime`. The wallet signs the request (an EIP-712 action, or the signal hash); the nullifier is the shared wallet + circuit-tag rule. Revocation is not checked. Design, measurements and limits in [`human-passport-score/README.md`](human-passport-score/README.md).
+Proves that the signing wallet holds a Human Passport scoreV2 attestation whose EIP-712 request was signed by an issuer in a public Merkle root of (issuer, GitcoinVerifier domain, schema) leaves, with `score >= min_score` for a public scorer id and `now < expirationTime`. The wallet signs the request (an EIP-712 action, or the signal hash); the nullifier is the OPRF nullifier. Revocation is not checked. Design, measurements and limits in [`human-passport-score/README.md`](human-passport-score/README.md).
 
 ## Shared nullifier schemes
 
-### Coinbase transaction profiles
+### Wallet credentials: the OPRF nullifier
+
+Every wallet credential circuit -- `coinbase-attestation`,
+`coinbase-country-attestation`, the six `coinbase-*-attestation-v2*`
+packages, `giwa-attestation`, `dojang-playground` and `human-passport-score`
+-- publishes the nullifier of [`oprf-nullifier-libs`](oprf-nullifier-libs)
+(TACEO's construction):
 
 ```text
-user_secret = keccak256(user_address || signal_hash)
-nullifier   = keccak256(user_secret || scope)
+query     = Poseidon2(DS_query, address, domain, scope)
+nullifier = Poseidon2(DS_out, query, P.x, P.y)     P = k * encode_to_curve(query), unblinded
+key hash  = Poseidon2(DS_key, D.x, D.y)            D = k * G, the OPRF public key
 ```
 
-Duplicate-detection behavior depends on both `signal_hash` and `scope` remaining stable for the relevant action.
-
-### GIWA and Dojang Playground
-
-```text
-user_secret = keccak256(user_address || keccak256(circuit_name))
-nullifier   = keccak256(user_secret || scope)
-```
-
-The circuit name is compiled in, so one wallet has one nullifier per scope and per circuit.
+The circuit recomputes the blinded query, checks the OPRF nodes'
+Chaum-Pedersen proof that their answer used the key behind `D`, and checks the
+client's unblinding, for the address its credential checks proved. Public:
+`oprf_key_hash`, `domain`, `scope` (each `keccak256(string) mod p` for a
+string) and `nullifier`, where the circuit had `scope` and `nullifier` before.
+Nobody without the OPRF key can compute a nullifier from an address. A
+verifier pins `oprf_key_hash` to the key registered for the proof type (one key
+per proof type) and compares `domain` and `scope` with the reduced values it
+asked for. The construction, the checks and the tests are in
+[`oprf-nullifier-libs/README.md`](oprf-nullifier-libs/README.md).
 
 ### OIDC domain profile
 
@@ -85,8 +92,8 @@ Nullifier storage is application-specific. `NullifierRegistry` and `ZKProofportN
 
 The current generated artifacts were built with:
 
-- `nargo 1.0.0-beta.19`
-- `bb 4.2.0-aztecnr-rc.2`
+- `nargo 1.0.0`
+- `bb 6.0.0`
 
 Both are pinned in [`toolchain.env`](toolchain.env); install them with `./scripts/install-toolchain.sh`.
 
@@ -108,6 +115,15 @@ function verify(bytes calldata proof, bytes32[] calldata publicInputs)
 ```
 
 See each pinned CIP for semantic public-input ordering and conformance requirements.
+
+## Dependencies
+
+Every Noir library is a local copy under `deps/`, one per library, pinned to an upstream release in `deps/MANIFEST.json`; no build fetches from git. A copy that differs from its release lists each change in its own `PATCHES.md`.
+
+```bash
+./scripts/check-deps.sh             # offline: git dependencies, duplicate copies, manifest hashes
+./scripts/check-deps.sh --upstream  # compares every copy with its upstream release
+```
 
 ## Reference deployments
 

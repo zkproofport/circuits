@@ -4,9 +4,10 @@ The `coinbase_attestation` (v2) circuit id with an Android phone as the
 revocation statement's signer.
 
 The wallet signature over the request, Coinbase's `attestAccount`
-transaction, the 225-byte statement ("ZKProofport/AA/1") and the nullifier
-are `../coinbase-v2-libs`, shared with `../coinbase-attestation-v2`. The
-public inputs are the same 193 values in the same order.
+transaction and the 225-byte statement ("ZKProofport/AA/1") are
+`../coinbase-v2-libs`, and the nullifier is `../oprf-nullifier-libs`, shared
+with `../coinbase-attestation-v2`. The public inputs are the same 133 values
+in the same order.
 
 The statement is signed (SHA256withECDSA) by an Android Keystore key that
 `../android-key-attestation` vouches for under Google's Key Attestation CA1:
@@ -20,9 +21,13 @@ certificate of the Remote Key Provisioning chain valid at `attested_at`.
 `ca2_tbs_len`, `ca2_sig`, `ca3_tbs`, `ca3_tbs_len`, `ca3_sig`, `att_tbs`,
 `att_tbs_len`, `att_sig`, `leaf_tbs`, `leaf_tbs_len`, `leaf_sig`.
 
+Then the OPRF nullifier's (`../oprf-nullifier-libs`): `oprf_public_key_x`,
+`oprf_public_key_y`, `oprf_beta`, `oprf_dlog_e`, `oprf_dlog_s`,
+`oprf_response_x`, `oprf_response_y`.
+
 ## Size
 
-1,570,792 gates, 2^21. The reference string is published in parts
+1,385,874 gates (OPRF nullifier, nargo 1.0.0 / bb 6.0.0), 2^21. The reference string is published in parts
 (`target/*.srs.part<N>`, each listed in `target/SHA256SUMS` with the joined
 file).
 

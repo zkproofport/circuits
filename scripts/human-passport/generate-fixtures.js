@@ -27,6 +27,7 @@
  *   BASE_RPC_URL  Base mainnet RPC (else read from circuits/.env.production).
  */
 const { ethers } = require('../node_modules/ethers');
+const oprf = require('../oprf-nullifier/oprf');
 const fs = require('fs');
 const path = require('path');
 
@@ -146,7 +147,6 @@ const ATTACKER_ISSUER_KEY = ethers.keccak256(ethers.toUtf8Bytes('zkproofport hum
 const TEST_WALLET_KEY = ethers.keccak256(ethers.toUtf8Bytes('zkproofport human_passport_score INSECURE TEST WALLET'));
 const OTHER_WALLET_KEY = ethers.keccak256(ethers.toUtf8Bytes('zkproofport human_passport_score INSECURE OTHER WALLET'));
 
-const CIRCUIT_TAG = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('human_passport_score')));
 const ZERO32 = new Uint8Array(32);
 const DAY = 86400n;
 
@@ -273,8 +273,7 @@ signal_hash = ${arr(f.signalHash)}
 domain_separator = ${arr(f.actionDomain)}
 action_hash = ${arr(f.actionHash)}
 signer_list_merkle_root = ${arr(f.root ?? f.tree.root)}
-scope = ${arr(f.scope)}
-nullifier = ${arr(f.nullifier)}
+${oprf.publicToml(f.oprf, { scope: f.scope, nullifier: f.nullifier })}
 min_score = ${f.minScore}
 scorer_id = ${f.scorerId}
 now = ${f.now}
@@ -282,7 +281,8 @@ user_address = ${arr(f.userAddress)}
 user_signature = ${arr(f.userSig)}
 user_pubkey_x = ${arr(f.userPub.x)}
 user_pubkey_y = ${arr(f.userPub.y)}
-${issuerToml(f)}`;
+${issuerToml(f)}${oprf.privateToml(f.oprf)}
+`;
 }
 
 function realToml(f, note) {
@@ -453,9 +453,12 @@ async function main() {
   fs.writeFileSync(path.join(REAL_VECTORS, 'proved_case'), `real_${proved}_chain${p.chainId}_${p.dataLen}b\n`);
 
   // ---- full circuit, synthetic issuer over the real data
-  const scope = ethers.keccak256(ethers.toUtf8Bytes('human-passport-score-fixture-scope'));
-  const nullifierOf = addr => ethers.keccak256(ethers.concat([
-    ethers.keccak256(ethers.concat([addr, CIRCUIT_TAG])), scope]));
+  // The OPRF nullifier (../oprf-nullifier): human_passport_score's test key,
+  // the nodes' answer computed locally, per wallet.
+  const SCOPE_STRING = 'human-passport-score-fixture-scope';
+  const oprfCache = {};
+  const oprfOf = addr => (oprfCache[addr] ??= oprf.values({ circuitId: 'human_passport_score', address: addr, scopeString: SCOPE_STRING }));
+  const plusOne = h => '0x' + ((BigInt(h) + 1n) % oprf.P).toString(16).padStart(64, '0');
 
   const action = {
     domain: { name: 'ZKProofport Human Passport Fixture', version: '1', chainId: 8453, verifyingContract: '0x000000000000000000000000000000000000dEaD' },
@@ -484,8 +487,10 @@ async function main() {
     const f = {
       sourceTx: txHash, domain, req, issuerSig: sig64(issuerSig), issuerPub: pubXY(issuerKey),
       tree: testTree, leafIndex: testIndex,
-      signalHash: sh, actionDomain, actionHash, scope,
-      nullifier: nullifierOf(userKey.address),
+      signalHash: sh, actionDomain, actionHash,
+      oprf: oprfOf(userKey.address),
+      scope: oprfOf(userKey.address).scope,
+      nullifier: oprfOf(userKey.address).nullifier,
       minScore: head.score, scorerId: head.scorerId, now: issuedAt + DAY,
       userAddress: userKey.address, userSig: sig64(userKey.signingKey.sign(userDigest)), userPub: pubXY(userKey.signingKey),
     };
@@ -528,8 +533,13 @@ async function main() {
     wrong_wallet: [{ userKey: other }, 'Invalid issuer signature'],
     pubkey_of_other_wallet: [{ after: () => ({ userPub: pubXY(other.signingKey) }) }, 'User pubkey does not match address'],
     signature_from_other_message: [{ after: () => ({ userSig: sig64(wallet.signingKey.sign(ethers.hashMessage('something else'))) }) }, 'Invalid user signature'],
-    wrong_nullifier: [{ after: () => ({ nullifier: ethers.keccak256(ethers.toUtf8Bytes('not the nullifier')) }) }, 'Nullifier mismatch'],
-    nullifier_other_scope: [{ after: () => ({ scope: ethers.keccak256(ethers.toUtf8Bytes('other scope')) }) }, 'Nullifier mismatch'],
+    wrong_nullifier: [{ after: f => ({ nullifier: plusOne(f.nullifier) }) }, 'Nullifier mismatch'],
+    // The nodes answered for another scope than the one published.
+    nullifier_other_scope: [{ after: () => ({ scope: oprf.fieldOfString('other scope') }) }, 'Challenge verification failed'],
+    // The OPRF answer for the other wallet, beside this wallet's credential.
+    oprf_other_wallet_answer: [{ after: () => ({ oprf: oprfOf(other.address), nullifier: oprfOf(other.address).nullifier }) }, 'Challenge verification failed'],
+    oprf_key_hash_plus_one: [{ after: f => ({ oprf: { ...f.oprf, oprf_key_hash: plusOne(f.oprf.oprf_key_hash) } }) }, 'OPRF key hash mismatch'],
+    oprf_domain_scope_swapped: [{ after: f => ({ scope: f.oprf.domain, oprf: { ...f.oprf, domain: f.oprf.scope } }) }, 'Challenge verification failed'],
     both_modes: [{ after: () => ({ signalHash }) }, 'signal_hash must be empty in action mode'],
     half_action_no_hash: [{ after: () => ({ actionHash: ZERO32 }) }, 'action mode needs an action hash'],
     half_action_no_domain: [{ after: () => ({ actionDomain: ZERO32 }) }, 'action mode needs a domain separator'],

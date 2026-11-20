@@ -32,16 +32,48 @@ on:
       - '**/Nargo.toml'
       - 'deps/**'
       - 'scripts/build.sh'
+      - 'scripts/check-deps.sh'
       - 'scripts/write-digests.sh'
+      - 'scripts/generate_srs.sh'
       - 'scripts/normalize-artifact-paths.py'
       - '.github/workflows/build-circuits.yml'
       - 'toolchain.env'
       - 'scripts/install-toolchain.sh'
+      - 'scripts/lib/toolchain.sh'
+      - 'scripts/test-oracle.sh'
 
 # The version lock lives in toolchain.env (nargo, bb, and the noir-rs the phone
 # proves with); this workflow installs exactly that set with the same script a
 # developer runs, so CI and a laptop cannot disagree about versions.
 jobs:
+  # The differential tests of keccak256, sha256, sha512, poseidon and
+  # noir_base64 (their `oracle_test(s)` modules) need each library's Node
+  # reference server, and cannot run on a Mac: nargo opens one connection per
+  # fuzz execution and exhausts macOS's ephemeral ports (scripts/test-oracle.sh
+  # has the measurement). scripts/test.sh reports them as NOT RUN; this job is
+  # where they run.
+  oracle-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The vendored packages carry yarn v1 lockfiles; install that yarn
+      # explicitly rather than relying on whatever the runner image ships.
+      - name: Install yarn 1
+        run: npm install -g --force yarn@1.22.22
+
+      - name: Install the pinned nargo and bb (toolchain.env)
+        run: ./scripts/install-toolchain.sh
+
+      - name: Run the oracle-backed dependency tests
+        run: ./scripts/test-oracle.sh
+
   build:
     runs-on: ubuntu-latest
     # The repository's default token is read-only; committing the rebuilt
@@ -51,9 +83,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Before anything builds: every library comes from one copy under deps/,
+      # matching deps/MANIFEST.json, with no git dependency. Offline only; the
+      # --upstream comparison needs the network and is run by hand.
+      - name: Check the vendored dependencies (deps/MANIFEST.json)
+        run: ./scripts/check-deps.sh
+
       - name: Install the pinned nargo and bb (toolchain.env)
         run: |
-          ./scripts/install-toolchain.sh
+          # Versioned folders; build.sh and the other scripts resolve them via
+          # scripts/lib/toolchain.sh. --make-default also puts the pair on PATH
+          # for anything that runs `nargo` / `bb` directly.
+          ./scripts/install-toolchain.sh --make-default
           echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.bb" >> "$GITHUB_PATH"
 
@@ -75,15 +116,6 @@ jobs:
           mkdir -p "$sdk"
           npm install --prefix "$sdk" --no-audit --no-fund --ignore-scripts @zkproofport-app/sdk@beta >/dev/null
           echo "SDK_CIRCUITS_JS=$sdk/node_modules/@zkproofport-app/sdk/dist/circuits.js" >> "$GITHUB_ENV"
-
-      # build.sh writes each circuit's SRS with noir-rs's srs_downloader
-      # (scripts/generate_srs.sh), a Rust build of several minutes; keep the
-      # clone and its target between runs, keyed by the pinned noir-rs tag.
-      - name: Cache the noir-rs SRS tool
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/noir-rs-tags
-          key: noir-rs-srs-${{ hashFiles('toolchain.env') }}
 
       - name: Build every circuit
         run: |

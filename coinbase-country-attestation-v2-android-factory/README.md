@@ -3,7 +3,7 @@
 The `coinbase_country_attestation` (v2) circuit id with a FACTORY-provisioned
 Android phone as the statement's signer: devices launched with Android 12 or
 earlier, whose attestation keys chain to Google's RSA-4096 root. Same public
-inputs (215), 227-byte statement and nullifier as
+inputs (155), 227-byte statement and OPRF nullifier as
 `../coinbase-country-attestation-v2-android`, with the request, transaction,
 country-list and statement checks of `../coinbase-country-v2-libs`.
 
@@ -21,6 +21,10 @@ SHA256(SHA256(statement) || signature).
 `integrity_payload_b64`, `integrity_payload_b64_len`, `integrity_signature`;
 `rsa_root_modulus`, `rsa_root_redc`, `play_integrity_key` (pinned by
 Poseidon2 hash in `../statement-signer`).
+
+Then the OPRF nullifier's (`../oprf-nullifier-libs`): `oprf_public_key_x`,
+`oprf_public_key_y`, `oprf_beta`, `oprf_dlog_e`, `oprf_dlog_s`,
+`oprf_response_x`, `oprf_response_y`.
 
 ## Size
 

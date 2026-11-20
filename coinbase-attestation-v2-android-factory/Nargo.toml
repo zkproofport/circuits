@@ -8,3 +8,4 @@ authors = ["zkproofport"]
 coinbase_libs = { path = "../coinbase-libs" }
 coinbase_v2_libs = { path = "../coinbase-v2-libs" }
 statement_signer = { path = "../statement-signer" }
+oprf_nullifier_libs = { path = "../oprf-nullifier-libs" }

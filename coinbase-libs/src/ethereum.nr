@@ -1,4 +1,4 @@
-use dep::keccak256::keccak256;
+use keccak256::keccak256;
 
 /// Coinbase Attester Contract address (the 'to' address)
 /// 0x357458739F90461b99789350868CD7CF330Dd7EE

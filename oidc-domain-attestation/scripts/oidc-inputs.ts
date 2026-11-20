@@ -384,7 +384,8 @@ export function buildTokenInputs(jwt: string, modulusB64url: string, opts: Omit<
   }
 
   const n = bufToBigInt(Buffer.from(modulusB64url, "base64url"));
-  const redc = (1n << (2n * 2048n + 4n)) / n;
+  // noir-bignum >= 0.9's Barrett parameter: floor(2^(2*2048 + 6) / n).
+  const redc = (1n << (2n * 2048n + 6n)) / n;
   const sig = bufToBigInt(Buffer.from(sigB64, "base64url"));
 
   return {

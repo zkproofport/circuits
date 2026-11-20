@@ -1,4 +1,11 @@
-use dep::keccak256::keccak256;
+// NOT USED BY ANY LIVE CIRCUIT since 2026-11-17. Every wallet credential
+// circuit publishes the OPRF nullifier instead (../../oprf-nullifier-libs):
+// both functions below hash the wallet address with values a verifier already
+// holds, so trying every public KYC address recovers the wallet. Kept only
+// because the measurement probes under ../../_probes still compile against
+// it. Do not call it from a circuit.
+
+use keccak256::keccak256;
 
 /// Verify that the nullifier is correctly derived from user_address, signal_hash, and scope.
 /// Formula:

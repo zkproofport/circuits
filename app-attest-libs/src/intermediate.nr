@@ -152,7 +152,20 @@ pub fn verify_intermediate_signature<let N: u32>(
     sig_r: [u8; 48],
     sig_s: [u8; 48],
 ) -> bool {
-    let digest = sha512::sha384::sha384_var(BoundedVec::from_parts(tbs, tbs_len));
+    // Only tbs[..tbs_len] is the certificate. sha384_var hashes the whole
+    // storage of the vector it is given (it writes the 0x80 and the length
+    // over it but keeps every other byte), so the bytes past tbs_len must be
+    // zero for the digest to be SHA-384 of the certificate. nargo up to
+    // 1.0.0-beta.19 zeroed them inside BoundedVec::from_parts; from 1.0.0 it
+    // does not (noir-lang/noir #11679), and a prover could otherwise hash
+    // bytes of its choosing after the certificate. Zeroed here instead.
+    let mut msg: [u8; N] = [0; N];
+    for i in 0..N {
+        if i < tbs_len {
+            msg[i] = tbs[i];
+        }
+    }
+    let digest = sha512::sha384::sha384_var(BoundedVec::from_parts(msg, tbs_len));
     let px: Secp384r1_Fq = Secp384r1_Fq::from_be_bytes(root_x);
     let py: Secp384r1_Fq = Secp384r1_Fq::from_be_bytes(root_y);
     let r: Secp384r1_Fr = Secp384r1_Fr::from_be_bytes(sig_r);

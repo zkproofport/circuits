@@ -1,0 +1,13 @@
+[package]
+name = "oprf_nullifier_libs"
+type = "lib"
+version = "0.1.0"
+authors = ["zkproofport"]
+
+# The OPRF nullifier every wallet credential circuit publishes (TACEO's
+# construction, SoW 2026-11-17). Gadgets from TaceoLabs/oprf-nr v2.0.0 and
+# TaceoLabs/noir-poseidon v0.6.1, vendored under ../deps.
+[dependencies]
+babyjubjub = { path = "../deps/oprf-nr/babyjubjub" }
+oprf = { path = "../deps/oprf-nr/oprf" }
+poseidon2 = { path = "../deps/noir-poseidon/poseidon2" }

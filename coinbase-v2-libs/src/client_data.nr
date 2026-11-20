@@ -17,7 +17,8 @@
 //   160    1  revoked -- 0x00 means the app found it unrevoked; anything else refused
 //   161   32  request digest -- the exact digest the wallet signed (EIP-191 over
 //             signal_hash, or the EIP-712 digest of the action)
-//   193   32  scope
+//   193   32  scope -- the public scope Field (keccak256(string) mod p), 32 bytes
+//             big-endian
 //   225       total
 
 use coinbase_libs::ethereum::COINBASE_ATTESTER_CONTRACT;

@@ -23,9 +23,8 @@ RUNS=${1:-3}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CIRCUITS="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck disable=SC1091
-. "$CIRCUITS/toolchain.env"
-[ "$(bb --version)" = "$BB_VERSION" ] || { echo "bb is $(bb --version), toolchain.env pins $BB_VERSION" >&2; exit 1; }
-[ "$(nargo --version | sed -n 's/^nargo version = //p')" = "$NARGO_VERSION" ] || { echo "nargo is not $NARGO_VERSION" >&2; exit 1; }
+# nargo and bb from the versioned folders toolchain.env pins (never PATH).
+. "$CIRCUITS/scripts/lib/toolchain.sh"
 
 gates() { bb gates -b "$1" 2>/dev/null | sed -n 's/.*"circuit_size": *\([0-9]*\).*/\1/p' | head -1; }
 opcodes() { bb gates -b "$1" 2>/dev/null | sed -n 's/.*"acir_opcodes": *\([0-9]*\).*/\1/p' | head -1; }

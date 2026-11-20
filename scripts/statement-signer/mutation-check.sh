@@ -30,6 +30,9 @@ set -u
 
 [ $# -ge 2 ] || { echo "usage: $0 <circuit-dir> <cases-file> [fixture-regex]" >&2; exit 1; }
 CIRCUITS=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
+# nargo and bb from the versioned folders toolchain.env pins (never PATH).
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/toolchain.sh"
 NAME="$1"
 CASES_FILE="$2"
 ONLY="${3:-}"

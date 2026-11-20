@@ -11,7 +11,7 @@ authors = ["zkproofport"]
 # Barretenberg's black box.
 [dependencies]
 app_attest = { path = "../app-attest-libs" }
-sha256 = { tag = "v0.3.0", git = "https://github.com/noir-lang/sha256" }
+sha256 = { path = "../deps/sha256" }
 # RSA-4096 for Google's factory root (the same RSA library and bignum the
 # OIDC circuit's JWT check uses).
 rsa = { path = "../deps/noir_rsa" }

@@ -18,6 +18,9 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# nargo and bb from the versioned folders toolchain.env pins (never PATH).
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/toolchain.sh"
 CIRCUITS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CIRCUIT_DIR="$CIRCUITS_ROOT/human-passport-score"
 REAL_DIR="$CIRCUITS_ROOT/human-passport-real-issuer-check"

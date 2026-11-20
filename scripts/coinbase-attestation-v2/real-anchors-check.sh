@@ -26,6 +26,9 @@ set -u
 unset NODE_OPTIONS
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# nargo and bb from the versioned folders toolchain.env pins (never PATH).
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/toolchain.sh"
 CIRCUITS="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PKG="${1:-coinbase-attestation-v2}"
 case "$PKG" in

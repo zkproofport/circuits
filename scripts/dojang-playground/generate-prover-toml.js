@@ -32,6 +32,7 @@ const { ethers } = require('../node_modules/ethers');
 const fs = require('fs');
 const path = require('path');
 const { CIRCUITS_ROOT, FAUCET, GIWA_SEPOLIA_CHAIN_ID, loadEnv } = require('./common');
+const oprf = require('../oprf-nullifier/oprf');
 
 /**
  * The fixture wallet's own issuances, one per transaction shape, made with
@@ -45,7 +46,6 @@ const RECORDED = {
 const MOCK_ATTESTER = '0x6646d970499BBeD728636823A5A7e551E811b414';
 const PAY_AND_ISSUE = '0xb19e5904';
 const REVOKE = ethers.id('revokeEAS()').slice(0, 10);
-const CIRCUIT_TAG = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('dojang_playground')));
 const ZERO32 = new Uint8Array(32);
 const MAX_TX_LEN = 300;
 
@@ -151,10 +151,10 @@ async function main() {
   const padded = new Uint8Array(MAX_TX_LEN);
   padded.set(rawBytes);
 
-  const scope = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('dojang-playground-scope')));
+  // The OPRF nullifier (../oprf-nullifier): dojang_playground's test key, the
+  // nodes' answer computed locally.
   const userAddress = ethers.getBytes(user.address);
-  const secret = ethers.getBytes(ethers.keccak256(ethers.concat([userAddress, CIRCUIT_TAG])));
-  const nullifier = ethers.getBytes(ethers.keccak256(ethers.concat([secret, scope])));
+  const oprfValues = oprf.values({ circuitId: 'dojang_playground', address: user.address, scopeString: 'dojang-playground-scope' });
 
   let signalHash = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('dojang-playground-signal')));
   let domainSeparator = ZERO32;
@@ -188,9 +188,7 @@ domain_separator = ${toTomlArray(domainSeparator)}
 
 action_hash = ${toTomlArray(actionHash)}
 
-scope = ${toTomlArray(scope)}
-
-nullifier = ${toTomlArray(nullifier)}
+${oprf.publicToml(oprfValues)}
 
 user_address = ${toTomlArray(userAddress)}
 
@@ -203,6 +201,8 @@ user_pubkey_y = ${toTomlArray(pub.slice(33, 65))}
 tx_length = ${rawBytes.length + LENGTH_DELTA}
 
 raw_transaction = ${toTomlArray(padded)}
+
+${oprf.privateToml(oprfValues)}
 `;
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, toml);

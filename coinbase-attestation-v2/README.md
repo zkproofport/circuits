@@ -14,12 +14,12 @@ Built from the `coinbase_app_attest_poc` prototype (circuits `b281485`, build
 output `33344e2`, which proofport-app pins; that commit stays reachable on this
 branch). The package is `coinbase_attestation_v2` while v1 still lives in
 `../coinbase-attestation`. The circuit ID it serves is the canonical
-`coinbase_attestation`: the nullifier tag and the clientData's statement kind
-are `keccak256("coinbase_attestation")`. Shipping it means replacing v1 in
+`coinbase_attestation`: the clientData's statement kind is
+`keccak256("coinbase_attestation")`. Shipping it means replacing v1 in
 place (circuits v2.0.0).
 
 Decisions behind it: `.claude/agents/circuits-dev.md`, "Decisions, 2026-10-23"
-(App Attest revocation, EIP-712, wallet nullifier) and the user's 2026-10-23
+(App Attest revocation, EIP-712, nullifier) and the user's 2026-10-23
 call that keys should not need rotation, so there is no registry contract and
 no public trust-anchor input: both anchors are circuit constants.
 
@@ -48,9 +48,12 @@ no public trust-anchor input: both anchors are circuit constants.
    - **server** (`signer_kind = 2`): the pinned server key, over
      SHA256(client_data).
    Any other `signer_kind` is refused.
-4. Nullifier = keccak(keccak(wallet ++ CIRCUIT_TAG) ++ scope)
-   (`verify_wallet_nullifier`). Existing v1 nullifiers (derived from
-   `signal_hash`) do not carry over; accepted in the decision.
+4. Nullifier: the OPRF nullifier of the proven wallet in (`domain`, `scope`)
+   (`../oprf-nullifier-libs`): the circuit checks the OPRF nodes'
+   Chaum-Pedersen proof for the query Poseidon2(DS_query, wallet, domain,
+   scope) and the client's unblinding, and publishes the key hash, domain,
+   scope and nullifier. Nobody without the OPRF key can compute it from an
+   address.
 
 ### How the private kind byte stays sound
 
@@ -121,17 +124,19 @@ the prototype. Reasons:
 
 In order. Each byte of a `[u8; 32]` is one field element.
 
-| # | Name | Type | Field elements |
+| # | Name | Type | Field offsets |
 |---|---|---|---|
-| 1 | `signal_hash` | `[u8; 32]` | 32 |
-| 2 | `domain_separator` | `[u8; 32]` | 32 |
-| 3 | `action_hash` | `[u8; 32]` | 32 |
-| 4 | `signer_list_merkle_root` | `[u8; 32]` | 32 |
-| 5 | `scope` | `[u8; 32]` | 32 |
-| 6 | `nullifier` | `[u8; 32]` | 32 |
-| 7 | `attested_at` | `u64` (unix seconds) | 1 |
+| 1 | `signal_hash` | `[u8; 32]` | 0-31 |
+| 2 | `domain_separator` | `[u8; 32]` | 32-63 |
+| 3 | `action_hash` | `[u8; 32]` | 64-95 |
+| 4 | `signer_list_merkle_root` | `[u8; 32]` | 96-127 |
+| 5 | `oprf_key_hash` | `Field` | 128 |
+| 6 | `domain` | `Field` (keccak256(string) mod p) | 129 |
+| 7 | `scope` | `Field` (keccak256(string) mod p) | 130 |
+| 8 | `nullifier` | `Field` | 131 |
+| 9 | `attested_at` | `u64` (unix seconds) | 132 |
 
-1-6 are `giwa_attestation`'s, in its order. 193 field elements (6,176 bytes as
+1-8 are `giwa_attestation`'s, in its order. 133 field elements (4,256 bytes as
 `bb` writes `public_inputs`). The prototype's `app_attest_ca_key_hash` and
 `app_attest_production` are gone (above), and the signer kind is never public.
 
@@ -139,8 +144,10 @@ The App Attest counter is NOT public: two proofs from one phone would carry
 consecutive numbers, which links them.
 
 What a verifier must do beyond `verify()`: check `attested_at` against its own
-clock (a window, e.g. 10 minutes), and everything it already does for the
-signer root, scope and nullifier. There is no trust anchor to compare: both are
+clock (a window, e.g. 10 minutes); pin `oprf_key_hash` to the OPRF key
+registered for `coinbase_attestation`; compare `domain` and `scope` with
+keccak256 mod p of the strings it asked for; and everything it already does
+for the signer root and the nullifier. There is no trust anchor to compare: both are
 in the vk.
 
 ## clientData format (what both signers sign)
@@ -158,7 +165,7 @@ Fixed 225 bytes, binary, every field at a fixed offset. No JSON or CBOR.
 | 128 | 32 | attestation uid the signer found | carried only |
 | 160 | 1 | revoked: `0x00` = found unrevoked | must be `0x00` |
 | 161 | 32 | request digest: the exact 32 bytes the wallet signed (`keccak("\x19Ethereum Signed Message:\n32" ++ signal_hash)` or `keccak(0x1901 ++ domain_separator ++ action_hash)`) | equal to the circuit's `signed_digest` |
-| 193 | 32 | scope | equal to public `scope` |
+| 193 | 32 | scope: the public `scope` Field's 32 bytes, big-endian (keccak256(string) mod p, not the raw keccak256) | equal to public `scope` |
 
 The uid is not checked: the circuit proves the transaction, not the EAS
 record, and a uid cannot be tied to the transaction in-circuit. Making it
@@ -269,7 +276,10 @@ ACCEPTED).
 | accept | server kind, action / no-action | accepted; proof verifies | A `server_action`, `server_no_action`, proof; R `real_server_action` |
 | accept | server kind with a full app chain in the ignored inputs | accepted | A `server_ignores_chain_fields` |
 | request | both modes; half an action; nothing signed; signature over the other mode | refused | A `both_modes`, `half_action_*`, `nothing_signed`, `signature_from_other_message` |
-| nullifier / coinbase | wrong nullifier; wrong signer root | refused | A `wrong_nullifier`, `wrong_signer_root` |
+| nullifier | nullifier + 1; key hash + 1; domain and scope swapped; another wallet's OPRF answer; another circuit's answer under this key hash | refused | A `oprf_*` (scripts/oprf-nullifier/acceptance-cases.sh); the library's own matrix in `../oprf-nullifier-libs/README.md` |
+| nullifier | another circuit's consistent OPRF answer | ACCEPTED by the circuit, with another key hash -- the verifier's pin refuses it | A `oprf_other_circuit_key` |
+| nullifier | scope written as scope + p | refused by nargo ("exceeds field modulus") | A `oprf_scope_plus_p` |
+| coinbase | wrong signer root | refused | A `wrong_signer_root` |
 | kind | app statement with kind byte = server | refused | A `kind_flipped_app_to_server` |
 | kind | server statement with kind byte = app (zero chain) | refused | A `kind_flipped_server_to_app` |
 | kind | server-signed, kind byte 0 / 3 | refused | A `kind_zero`, `kind_unknown`; M |
@@ -320,6 +330,10 @@ the separator is now `~`.
 | public inputs | 128 (4,096 bytes) | 226 (7,232 bytes) | 193 (6,176 bytes) | 193 (6,176 bytes) |
 | vk / Solidity verifier | 1,888 B / 2,461 lines | 1,888 B / 2,461 lines | 1,888 B / 2,461 lines | 1,888 B / 2,461 lines |
 
+With the OPRF nullifier (2026-11-17, nargo 1.0.0, bb 6.0.0): 1,001,075 gates,
+2^20 (47,501 under it), proof 10,304 bytes, 133 public inputs (4,256 bytes).
+Acceptance 48 passed, 0 failed (synthetic anchors) plus real anchors 3/0.
+
 983,451 is 65,125 (6.2%) under 2^20. The probe that decided this
 (`../_probes/coinbase-attestation-v2/pinned-intermediate`, 984,404) carries a
 measurement sink the circuit does not. Per-part marginal costs of the pinned
@@ -342,9 +356,9 @@ it from a release tag like every other circuit.
   `app_attest_signing_key_under_ca`. The root -> intermediate code
   (`intermediate.nr`) stays for the library tests and a future root-pinned
   circuit.
-- P-384: `zkpassport/noir-ecdsa` v0.3.0 + `noir-bignum` v0.9.2-1 +
-  `noir_bigcurve` v0.13.2-1, the newest tags that compile on beta.19.
-- SHA-384: `zkpassport/sha512` v0.1.1, used only by the library's
+- P-384: `zkpassport/noir-ecdsa` v0.4.1 + `noir-bignum` v0.10.0-1 +
+  `noir_bigcurve` v0.14.0-1, vendored under `../deps/` (`deps/MANIFEST.json`).
+- SHA-384: `zkpassport/sha512` v0.2.0, used only by the library's
   root -> intermediate tests now.
 - P-256: `std::ecdsa_secp256r1`. SHA-256: `noir-lang/sha256` v0.3.0.
 - `nargo compile` reports "Brillig function call isn't properly covered by a

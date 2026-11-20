@@ -4,7 +4,7 @@
  *
  *   env -u NODE_OPTIONS node scripts/coinbase-attestation-v2/export-app-vector.js <out.json>
  *
- * The app builds clientData and the 2,769-value input vector itself; when a
+ * The app builds clientData and the 2,716-value input vector itself (2,769 before the OPRF nullifier); when a
  * byte differs from what this circuit expects, the proof fails on the phone
  * and names nothing. So the app's test (proofport-app
  * src/appAttest/__tests__/theAppBuildsTheCircuitsOwnVector.test.ts) compares
@@ -19,7 +19,7 @@
  * make-fixtures.sh refuses to build a copy that differs in anything but the
  * two anchor constants), and written as JSON:
  *
- *   { source, scopeString, caKeyHash, eip712: {domain, types, primaryType, messageNonce},
+ *   { source, scopeString, requestId, caKeyHash, eip712: {domain, types, primaryType, message},
  *     abi: [{name, visibility, fields}], action: {...}, noAction: {...} }
  *
  * Byte arrays become one 0x-hex string, the Merkle proof a list of them,
@@ -35,6 +35,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { ethers } = require('../node_modules/ethers');
 const anchors = require('../statement-signer/anchors');
+const { FIXTURE_REQUEST_ID } = require('../lib/signal-hash');
 
 const HERE = __dirname;
 const CIRCUITS = path.resolve(HERE, '../..');
@@ -45,9 +46,10 @@ const REAL_ABI = path.join(CIRCUITS, 'coinbase-attestation-v2/target/coinbase_at
 const SCOPE_STRING = 'proofport';
 const EIP712 = {
   domain: { name: 'ZKProofport Coinbase KYC v2 fixture', version: '1', chainId: 8453, verifyingContract: '0x0000000000000000000000000000000000000001' },
-  types: { Join: [{ name: 'member', type: 'address' }, { name: 'nonce', type: 'string' }] },
+  types: { Join: [{ name: 'group', type: 'string' }, { name: 'nonce', type: 'string' }] },
   primaryType: 'Join',
-  messageNonce: 'coinbase-attestation-v2-1',
+  // No wallet in the action: its hash is a public input.
+  message: { group: 'ZKProofport fixture group', nonce: 'coinbase-attestation-v2-1' },
 };
 
 function fieldCount(t) {
@@ -82,7 +84,8 @@ function readToml(file) {
       out[m[1]] = Array.isArray(value[0]) ? value.map(hex) : hex(value);
       re.lastIndex = j + 1;
     } else {
-      out[m[1]] = text.slice(start).split('\n')[0].trim();
+      // Field values (the OPRF nullifier's) are written quoted; numbers bare.
+      out[m[1]] = text.slice(start).split('\n')[0].trim().replace(/^"(.*)"$/, '$1');
     }
   }
   return out;
@@ -129,6 +132,9 @@ function main() {
         `run ${new Date().toISOString().slice(0, 10)} with a throwaway random wallet and an all-zero Coinbase half. ` +
         'Synthetic App Attest keys under the synthetic intermediate. Holds no real wallet, transaction or device data.',
       scopeString: SCOPE_STRING,
+      // The request the no-action signal_hash answers: keccak256(scope ++
+      // circuitId ++ requestId), no wallet (../lib/signal-hash.js).
+      requestId: FIXTURE_REQUEST_ID,
       // SHA256(X || Y) of the synthetic intermediate that signed this
       // vector's credential certificate -- what the app must be told to pin
       // in place of Apple's CA 1 (0x8ef85f95...747f) to accept the vector.

@@ -274,6 +274,20 @@ fn one_changed_byte_breaks_the_roots_signature() {
     assert(!verify_intermediate_signature(rx, ry, tbs, REAL_INTERMEDIATE_TBS_LEN, r, s));
 }
 
+// Bytes after tbs_len are not part of the certificate: whatever the prover
+// puts there, the digest is SHA-384 of tbs[..tbs_len]. Fails if the tail is
+// hashed (nargo 1.0.0's from_parts no longer zeroes it).
+#[test]
+fn bytes_after_the_tbs_do_not_change_the_digest() {
+    let (rx, ry) = split96(APPLE_ROOT);
+    let (r, s) = split96(REAL_INTERMEDIATE_SIG);
+    let mut tbs = REAL_INTERMEDIATE_TBS;
+    for i in REAL_INTERMEDIATE_TBS_LEN..INTERMEDIATE_TBS_MAX_LEN {
+        tbs[i] = 0xa5;
+    }
+    assert(verify_intermediate_signature(rx, ry, tbs, REAL_INTERMEDIATE_TBS_LEN, r, s));
+}
+
 #[test]
 fn another_root_key_does_not_verify_ca_1() {
     // The intermediate's own key, on the curve, standing in for "some other root".

@@ -3,7 +3,7 @@
 The `coinbase_attestation (v2)` circuit id with a FACTORY-provisioned Android phone as the
 statement's signer: devices launched with Android 12 or earlier, whose
 attestation keys were installed at the factory and chain to Google's RSA-4096
-root. Same public inputs, 225-byte revocation statement and nullifier as `../coinbase-attestation-v2-android`, with
+root. Same public inputs (133), 225-byte revocation statement and OPRF nullifier as `../coinbase-attestation-v2-android`, with
 the request, transaction and statement checks of `../coinbase-v2-libs`.
 
 The statement is signed (SHA256withECDSA) by an Android Keystore key that the
@@ -28,9 +28,13 @@ Google's RSA root and our Play verification key, given as inputs and pinned
 by Poseidon2 hash in `../statement-signer` (Barretenberg cannot build them
 as constants).
 
+Then the OPRF nullifier's (`../oprf-nullifier-libs`): `oprf_public_key_x`,
+`oprf_public_key_y`, `oprf_beta`, `oprf_dlog_e`, `oprf_dlog_s`,
+`oprf_response_x`, `oprf_response_y`.
+
 ## Size
 
-1,344,762 gates, 2^21. The reference string is published in parts.
+1,249,959 gates (OPRF nullifier, nargo 1.0.0 / bb 6.0.0), 2^21. The reference string is published in parts.
 
 ## Acceptance
 

@@ -26,9 +26,8 @@ PROBE="$CIRCUITS/_probes/coinbase-attestation-v2/pinned-intermediate"
 VARIANTS="$CIRCUITS/_probes/coinbase-attestation-v2/pinned-intermediate-variants"
 
 # shellcheck disable=SC1091
-. "$CIRCUITS/toolchain.env"
-[ "$(bb --version)" = "$BB_VERSION" ] || { echo "bb is $(bb --version), toolchain.env pins $BB_VERSION" >&2; exit 1; }
-[ "$(nargo --version | sed -n 's/^nargo version = //p')" = "$NARGO_VERSION" ] || { echo "nargo is not $NARGO_VERSION" >&2; exit 1; }
+# nargo and bb from the versioned folders toolchain.env pins (never PATH).
+. "$CIRCUITS/scripts/lib/toolchain.sh"
 
 SWITCHES="full PINNED APP_BRANCH WITH_APP WITH_CRED_SHA256 WITH_CRED_P384 WITH_CRED_DER WITH_ATT_AUTH_DATA WITH_ASSERTION_DIGEST WITH_CLIENT_DATA_CHECK WITH_P256 WITH_REQUEST_SIG WITH_COINBASE_TX WITH_NULLIFIER"
 

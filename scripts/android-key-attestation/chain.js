@@ -152,11 +152,12 @@ function limbs120(v, count) {
 }
 
 /** RSA-4096 modulus -> { modulus, redc } limbs as noir-bignum's BigNumParams takes them
- * (redc = floor(2^(2*4096+4) / n), as the OIDC builder does for 2048). */
+ * (redc = floor(2^(2*4096+6) / n): noir-bignum >= 0.9 adds 6 overflow bits to the
+ * Barrett parameter, where 0.8 added 4; deps/MANIFEST.json pins the version). */
 function rsa4096Params(modulusHex) {
   const n = BigInt('0x' + modulusHex);
   if (n >> 4095n !== 1n) throw new Error('not a 4096-bit modulus');
-  return { modulus: limbs120(n, 35), redc: limbs120((1n << (2n * 4096n + 4n)) / n, 35) };
+  return { modulus: limbs120(n, 35), redc: limbs120((1n << (2n * 4096n + 6n)) / n, 35) };
 }
 
 /**

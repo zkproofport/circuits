@@ -30,6 +30,9 @@ set -u
 unset NODE_OPTIONS
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# nargo and bb from the versioned folders toolchain.env pins (never PATH).
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/lib/toolchain.sh"
 CIRCUITS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CIRCUIT_REL="${1:-}"
@@ -57,10 +60,14 @@ case "$CIRCUIT_REL" in
     giwa-attestation)
         REGEN="$SCRIPT_DIR/giwa-poc/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/.env.development"
+        OPRF_ID=giwa_attestation
+        OPRF_SWAP_REFUSAL="Challenge verification failed"
         ;;
     dojang-playground)
         REGEN="$SCRIPT_DIR/dojang-playground/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/.env.development"
+        OPRF_ID=dojang_playground
+        OPRF_SWAP_REFUSAL="Challenge verification failed"
         ;;
     coinbase-attestation-v2-synthetic-anchors)
         # coinbase_attestation_v2 with Apple's root and the server key replaced
@@ -70,20 +77,28 @@ case "$CIRCUIT_REL" in
         # repository's proofport-ai/.env.test.
         REGEN="$SCRIPT_DIR/coinbase-attestation-v2/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        OPRF_ID=coinbase_attestation
+        OPRF_SWAP_REFUSAL="clientData does not bind this scope"
         ;;
     coinbase-country-attestation-v2-synthetic-anchors)
         # coinbase_country_attestation v2, anchors replaced as for KYC v2.
         # Real attestCountry transaction; same wallet key.
         REGEN="$SCRIPT_DIR/coinbase-country-attestation-v2/make-fixtures.sh"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        OPRF_ID=coinbase_country_attestation
+        OPRF_SWAP_REFUSAL="clientData does not bind this scope"
         ;;
     coinbase-country-attestation-v2-android-synthetic-anchors)
         REGEN="$SCRIPT_DIR/coinbase-attestation-v2-android/make-fixtures.sh country-rkp"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        OPRF_ID=coinbase_country_attestation
+        OPRF_SWAP_REFUSAL="clientData does not bind this scope"
         ;;
     coinbase-country-attestation-v2-android-factory-synthetic-anchors)
         REGEN="$SCRIPT_DIR/coinbase-attestation-v2-android/make-fixtures.sh country-factory"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        OPRF_ID=coinbase_country_attestation
+        OPRF_SWAP_REFUSAL="clientData does not bind this scope"
         ;;
     coinbase-attestation-v2-android-synthetic-anchors)
         # coinbase_attestation v2's Android package with Google's root
@@ -91,12 +106,16 @@ case "$CIRCUIT_REL" in
         # Coinbase attestation, wallet key as above.
         REGEN="$SCRIPT_DIR/coinbase-attestation-v2-android/make-fixtures.sh rkp"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        OPRF_ID=coinbase_attestation
+        OPRF_SWAP_REFUSAL="clientData does not bind this scope"
         ;;
     coinbase-attestation-v2-android-factory-synthetic-anchors)
         # The factory package: Google's RSA root and our Play key replaced by
         # synthetic ones (make-synthetic-anchors.sh). Real Coinbase attestation.
         REGEN="$SCRIPT_DIR/coinbase-attestation-v2-android/make-fixtures.sh factory"
         REGEN_NEEDS="$CIRCUITS_ROOT/../proofport-ai/.env.test"
+        OPRF_ID=coinbase_attestation
+        OPRF_SWAP_REFUSAL="clientData does not bind this scope"
         ;;
     *)
         echo "No fixture recipe for $CIRCUIT_REL. Add one here rather than running it by hand."
@@ -223,8 +242,11 @@ node "$TAMPER" Prover.toml "$VECTORS/half_action_no_domain.toml" zero domain_sep
 node "$TAMPER" Prover.no-action.toml "$VECTORS/nothing_signed.toml" zero signal_hash > /dev/null \
   && refuse "nothing_signed" "test-vectors/nothing_signed" "signal_hash is required when no action is bound"
 
-node "$TAMPER" Prover.toml "$VECTORS/wrong_nullifier.toml" fill nullifier > /dev/null \
-  && refuse "wrong_nullifier" "test-vectors/wrong_nullifier" "Nullifier mismatch"
+# The OPRF nullifier's refusals (oprf-nullifier-libs), the same for every
+# circuit that publishes it.
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/oprf-nullifier/acceptance-cases.sh"
+oprf_cases
 
 # A well-formed signature over the OTHER mode's message. Not a random blob:
 # this is the failure a length check or a malformed-input check would miss.
@@ -362,10 +384,12 @@ esac
 echo ""
 echo "Proof (action mode):"
 mkdir -p ./target/proof
+PROVE_T0=$(python3 -c 'import time; print(time.time())')
 if cp "./target/witness_action.gz" ./target/proof/witness.gz 2>/dev/null \
    && bb prove -b "$CIRCUIT_JSON" -w ./target/proof/witness.gz -k ./target/vk/vk -o ./target/proof -t evm > "$VECTORS/prove.log" 2>&1 \
+   && PROVE_S=$(python3 -c "import time; print(f'{time.time() - $PROVE_T0:.1f}')") \
    && bb verify -p ./target/proof/proof -i ./target/proof/public_inputs -k ./target/vk/vk -t evm >> "$VECTORS/prove.log" 2>&1; then
-  echo "  ok       proved and verified ($(wc -c < ./target/proof/proof | tr -d ' ') bytes)"
+  echo "  ok       proved in ${PROVE_S} s and verified ($(wc -c < ./target/proof/proof | tr -d ' ') bytes)"
   PASSED=$((PASSED + 1))
 else
   echo "  FAILED   prove/verify"

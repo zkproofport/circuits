@@ -31,6 +31,8 @@ set -eu
 
 [ $# -eq 1 ] || { echo "usage: $0 <circuit-dir>" >&2; exit 1; }
 CIRCUITS=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
+# shellcheck disable=SC1091
+. "$CIRCUITS/scripts/lib/toolchain.sh"
 NAME="$1"
 REAL="$CIRCUITS/$NAME"
 SYN="$CIRCUITS/$NAME-synthetic-anchors"

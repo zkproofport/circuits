@@ -3,7 +3,7 @@
 // Provides keccak256-based Merkle proof verification for Ethereum compatibility.
 // This is used to verify that a Coinbase signer address is in the authorized list.
 
-use dep::keccak256::keccak256;
+use keccak256::keccak256;
 
 /// Verifies a Merkle proof using keccak256 hashing
 ///

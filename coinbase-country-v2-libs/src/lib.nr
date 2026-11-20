@@ -3,7 +3,7 @@
 // in this order:
 //   check_request_and_country_tx -> check_country_list
 //   -> check_country_client_data -> <its signer check over client_data>
-//   -> verify_wallet_nullifier(user_address, CIRCUIT_TAG, ...)
+//   -> verify_oprf_nullifier(user_address, ...) (../oprf-nullifier-libs)
 // It mirrors ../coinbase-v2-libs (coinbase_attestation v2) line for line; the
 // differences are the attestCountry selector, the country read from the
 // calldata, the country list (v1's rule, unchanged) and the statement's
@@ -24,8 +24,9 @@ global ATTEST_COUNTRY_SELECTOR: [u8; 4] = [0x0a, 0x22, 0x52, 0x48];
 pub global COUNTRY_LIST_MAX: u32 = 10;
 
 /// keccak256("coinbase_country_attestation"): the canonical id, not a package
-/// name. proofport-ai's computeWalletNullifier(address, circuitId) derives the
-/// tag from the id, so every package serving the id uses this tag.
+/// name. The statement kind at clientData offset 16, the same in every package
+/// serving the id. (It no longer enters the nullifier: that is the OPRF's,
+/// keyed per proof type.)
 pub global CIRCUIT_TAG: [u8; 32] = [
     0x58, 0xbb, 0xa1, 0x74, 0x94, 0xbc, 0xf6, 0x8a, 0x76, 0xfb, 0x92, 0x16, 0x5b, 0x32, 0xfc, 0x19,
     0x8f, 0x30, 0x77, 0x54, 0x7e, 0x16, 0x9d, 0xf2, 0x57, 0x73, 0x2d, 0xd6, 0x9f, 0x8b, 0x03, 0xb4,

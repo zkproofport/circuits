@@ -1,4 +1,4 @@
-use dep::keccak256::keccak256;
+use keccak256::keccak256;
 use crate::ethereum::{create_eip712_digest, create_eth_signed_message_hash};
 
 /// True when all 32 bytes are zero. Summing cannot overflow: 32 * 255 = 8160.

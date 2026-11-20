@@ -5,11 +5,11 @@ built 2026-10-30 as `../coinbase-attestation-v2` (Coinbase KYC v2) is: the
 prover looks up the wallet's Coinbase Verified Country attestation right
 before proving and, only if it is unrevoked, a key the circuit trusts signs a
 statement saying so -- including which country it saw. Same signers, same
-optional EIP-712 action, same wallet + circuit-tag nullifier; the country
+optional EIP-712 action, same OPRF nullifier; the country
 list rule is v1's, unchanged.
 
 Decisions behind it: `.claude/agents/circuits-dev.md`, "Decisions,
-2026-10-23" (revocation binding, EIP-712 action and the wallet nullifier for
+2026-10-23" (revocation binding, EIP-712 action and the nullifier for
 "the Coinbase circuits") and the 2026-10-30 call that Country ships with KYC
 v2 in the same release.
 
@@ -21,8 +21,8 @@ v2 in the same release.
 
 The package is `coinbase_country_attestation_v2` while v1 still lives in
 `../coinbase-country-attestation`. The circuit ID every package serves is the
-canonical `coinbase_country_attestation`: the nullifier tag and the
-statement's kind are `keccak256("coinbase_country_attestation")`.
+canonical `coinbase_country_attestation`: the statement's kind is
+`keccak256("coinbase_country_attestation")`.
 
 ## What the circuit proves
 
@@ -40,8 +40,12 @@ statement's kind are `keccak256("coinbase_country_attestation")`.
    the server exactly as in `../coinbase-attestation-v2` (shared
    `../statement-signer`: CA 1 pinned, production App Attest only, the
    server's P-256 Cloud KMS key).
-4. Nullifier = keccak(keccak(wallet ++ CIRCUIT_TAG) ++ scope). v1 Country
-   nullifiers (derived from `signal_hash`) do not carry over.
+4. Nullifier: the OPRF nullifier of the proven wallet in (`domain`, `scope`)
+   (`../oprf-nullifier-libs`): the circuit checks the OPRF nodes'
+   Chaum-Pedersen proof for the query Poseidon2(DS_query, wallet, domain,
+   scope) and the client's unblinding, and publishes the key hash, domain,
+   scope and nullifier. Nobody without the OPRF key can compute it from an
+   address.
 
 ### Why the statement carries the country
 
@@ -76,19 +80,23 @@ In order. Each byte of a `[u8; N]` is one field element.
 | 5 | `country_list` | `[[u8; 2]; 10]` | 128-147 |
 | 6 | `country_list_length` | `u32` | 148 |
 | 7 | `is_included` | `bool` | 149 |
-| 8 | `scope` | `[u8; 32]` | 150-181 |
-| 9 | `nullifier` | `[u8; 32]` | 182-213 |
-| 10 | `attested_at` | `u64` (unix seconds) | 214 |
+| 8 | `oprf_key_hash` | `Field` | 150 |
+| 9 | `domain` | `Field` (keccak256(string) mod p) | 151 |
+| 10 | `scope` | `Field` (keccak256(string) mod p) | 152 |
+| 11 | `nullifier` | `Field` | 153 |
+| 12 | `attested_at` | `u64` (unix seconds) | 154 |
 
-215 field elements (6,880 bytes as `bb` writes `public_inputs`). Coinbase KYC
+155 field elements (4,960 bytes as `bb` writes `public_inputs`). Coinbase KYC
 v2's order with v1 Country's fields where v1 had them (after the signer
-root, before scope and nullifier). v1 Country has 150; a v1 proof is refused
-by its count.
+root, before the OPRF nullifier's four). v1 Country has 90; a v1 proof is
+refused by its count.
 
 What a verifier must do beyond `verify()`: check `attested_at` against its
 own clock (the SDK/core window is 15 minutes behind, 5 ahead), the signer
-root, the scope, the nullifier, and that the public country list and mode
-are the ones it asked for.
+root, `oprf_key_hash` against the OPRF key registered for
+`coinbase_country_attestation`, `domain` and `scope` against keccak256 mod p
+of the strings it asked for, the nullifier, and that the public country list
+and mode are the ones it asked for.
 
 ## clientData format (what every signer signs)
 
@@ -105,7 +113,7 @@ Fixed 227 bytes, binary.
 | 128 | 32 | attestation uid the signer found | carried only |
 | 160 | 1 | revoked: `0x00` = found unrevoked | must be `0x00` |
 | 161 | 32 | request digest: the exact 32 bytes the wallet signed | equal to the circuit's `signed_digest` |
-| 193 | 32 | scope | equal to public `scope` |
+| 193 | 32 | scope: the public `scope` Field's 32 bytes, big-endian | equal to public `scope` |
 | 225 | 2 | country: the attestation's `verifiedCountry`, two ASCII bytes | equal to the transaction's country |
 
 Bytes 0-224 are Coinbase KYC v2's layout with this circuit's tag and schema;
@@ -156,7 +164,7 @@ below are what Country adds.
 | statement | another country; the same country lowercased; server-signed other country | refused | A `client_other_country`, `client_lowercase_country`, `server_other_country`; M |
 | statement | KYC tag; KYC schema; a whole KYC statement re-signed | refused | A `client_kyc_tag`, `client_kyc_schema`, `kyc_statement_replay`; M (tag, schema) |
 | transaction | the same wallet's attestAccount (KYC) transaction, statement and list made to match it | refused at the selector | A `kyc_tx`; M |
-| nullifier | KYC's tag; arbitrary | refused | A `kyc_nullifier`, `wrong_nullifier` |
+| nullifier | the same wallet's KYC nullifier (KYC's OPRF key) published here; the OPRF cases of every circuit | refused | A `kyc_nullifier`, `oprf_*` |
 | signer | real Apple chain stops at the App ID; synthetic CA refused; test-key server statement | as KYC v2 | R |
 | hostile | non-ASCII / wrong-length country | cannot be expressed: two fixed bytes compared to two transaction bytes | N/A |
 | empty | unused list slots | ignored by length, not by value | A `match_past_length` |
@@ -165,8 +173,13 @@ below are what Country adds.
 
 ## Measurements
 
-Pinned toolchain (nargo 1.0.0-beta.19, bb 4.2.0-aztecnr-rc.2), Apple M5 Pro.
-Recorded with the date in `.claude/agents/circuits-dev.md`, "Coinbase
+With the OPRF nullifier (2026-11-17, nargo 1.0.0, bb 6.0.0): this package
+1,001,264 gates (2^20), `-android` 1,386,063 (2^21), `-android-factory`
+1,250,147 (2^21); 155 public inputs (4,960 bytes). Acceptance: 67/0 (+ real
+anchors 3/0), 41/0, 45/0.
+
+Earlier measurements (nargo 1.0.0-beta.19, bb 4.2.0-aztecnr-rc.2) are
+recorded with the date in `.claude/agents/circuits-dev.md`, "Coinbase
 Country v2".
 
 ## Dependencies

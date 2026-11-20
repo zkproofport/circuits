@@ -9,11 +9,12 @@
 // - Part 2: On-chain TX verification (identical)
 // - Part 3: Country extraction + list check (new)
 
-use dep::std;
-use dep::keccak256::keccak256;
-use dep::coinbase_libs::eip1559_tx_parser;
-use dep::coinbase_libs::merkle;
-use dep::coinbase_libs::ethereum::{
+use oprf_nullifier_libs::{OprfAnswer, verify_oprf_nullifier};
+use std;
+use keccak256::keccak256;
+use coinbase_libs::eip1559_tx_parser;
+use coinbase_libs::merkle;
+use coinbase_libs::ethereum::{
     COINBASE_ATTESTER_CONTRACT,
     derive_address_from_pubkey,
     create_eth_signed_message_hash,
@@ -44,9 +45,15 @@ fn main(
     country_list_length: pub u32,
     is_included: pub bool,
 
-    // Scope and nullifier for Sybil resistance
-    scope: pub [u8; 32],           // keccak256(scope_string)
-    nullifier: pub [u8; 32],       // keccak256(user_secret ++ scope)
+    // The OPRF nullifier (../oprf-nullifier-libs): the hash of the OPRF key the
+    // verifier pins for this proof type, the nullifier's domain and scope
+    // (keccak256(string) mod p each), and the nullifier -- one per wallet per
+    // (domain, scope) under that key, which nobody without the key can compute
+    // from an address.
+    oprf_key_hash: pub Field,
+    domain: pub Field,
+    scope: pub Field,
+    nullifier: pub Field,
 
     // ============ Private Inputs ============
     // (Provided by the User/Prover, kept hidden)
@@ -70,6 +77,15 @@ fn main(
     coinbase_signer_merkle_proof: [[u8; 32]; 8],  // Max depth 8 (supports up to 256 signers)
     coinbase_signer_leaf_index: u32,
     merkle_proof_depth: u32,
+    // The OPRF nodes' answer for this wallet's query, and the blinding factor
+    // (private; ../oprf-nullifier-libs checks them).
+    oprf_public_key_x: Field,
+    oprf_public_key_y: Field,
+    oprf_beta: Field,
+    oprf_dlog_e: Field,
+    oprf_dlog_s: Field,
+    oprf_response_x: Field,
+    oprf_response_y: Field,
 ) {
     // ===================================================================
     // PART 1: User Ownership Verification
@@ -200,9 +216,25 @@ fn main(
 
     // ===================================================================
     // PART 4: Nullifier Verification (Sybil Resistance)
-    // "The nullifier is correctly derived from user_address, signal_hash, and scope."
+    // "The nullifier is the OPRF nullifier of user_address in (domain, scope)."
+    // signal_hash is no longer part of it (../oprf-nullifier-libs).
     // ===================================================================
-    coinbase_libs::nullifier::verify_nullifier(user_address, signal_hash, scope, nullifier);
+    verify_oprf_nullifier(
+        user_address,
+        domain,
+        scope,
+        oprf_key_hash,
+        nullifier,
+        OprfAnswer {
+            public_key_x: oprf_public_key_x,
+            public_key_y: oprf_public_key_y,
+            beta: oprf_beta,
+            dlog_e: oprf_dlog_e,
+            dlog_s: oprf_dlog_s,
+            response_x: oprf_response_x,
+            response_y: oprf_response_y,
+        },
+    );
 
     // ===================================================================
     // If all assertions pass, the proof is valid!

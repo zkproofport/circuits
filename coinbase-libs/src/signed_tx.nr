@@ -23,7 +23,7 @@
 // place is only right while both payloads exceed 55 bytes; a self-issued
 // transaction with 4 bytes of calldata is close to that line.
 
-use dep::keccak256::keccak256;
+use keccak256::keccak256;
 use crate::rlp;
 
 pub global MAX_TX_LEN: u32 = 300;

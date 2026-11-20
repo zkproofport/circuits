@@ -11,5 +11,5 @@ authors = ["zkproofport"]
 # parser (the same tag zkPassport pins).
 [dependencies]
 json_parser = { path = "../deps/noir_json_parser" }
-base64 = { git = "https://github.com/noir-lang/noir_base64", tag = "v0.4.2" }
-sha256 = { tag = "v0.3.0", git = "https://github.com/noir-lang/sha256" }
+base64 = { path = "../deps/noir_base64" }
+sha256 = { path = "../deps/sha256" }

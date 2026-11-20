@@ -5,7 +5,7 @@
 #
 # Usage:
 #   <circuits>/scripts/build.sh <circuit-dir>
-#   <circuits>/scripts/build.sh coinbase-kyc
+#   <circuits>/scripts/build.sh coinbase-attestation
 
 set -e
 
@@ -14,7 +14,7 @@ CIRCUITS_DIR="$(dirname "$SCRIPT_DIR")"
 
 if [ -z "$1" ]; then
     echo "Usage: ${SCRIPT_DIR}/build.sh <circuit-dir>"
-    echo "Example: ${SCRIPT_DIR}/build.sh coinbase-kyc"
+    echo "Example: ${SCRIPT_DIR}/build.sh coinbase-attestation"
     exit 1
 fi
 
@@ -60,30 +60,14 @@ echo ""
 # comparing output across versions is a legitimate thing to do. It is not a way
 # past a surprise: anything it produces must be treated as scratch.
 # The pinned set lives in ../toolchain.env; read it rather than restate it.
+# scripts/lib/toolchain.sh resolves the binaries from the versioned folders
+# install-toolchain.sh fills (never from PATH, where another session's
+# toolchain may sit), asks each its version, refuses a mismatch, and puts the
+# pair first on PATH so the post-build hooks run the same nargo and bb.
 # shellcheck disable=SC1091
-. "${CIRCUITS_DIR}/toolchain.env"
-BB_VERSION_GOT=$(bb --version 2>/dev/null || echo "not found")
-NARGO_VERSION_GOT=$(nargo --version 2>/dev/null | sed -n 's/^nargo version = //p')
-echo "bb CLI version:    $BB_VERSION_GOT ($(command -v bb || echo 'not on PATH'))"
-echo "nargo version:     ${NARGO_VERSION_GOT:-not found} ($(command -v nargo || echo 'not on PATH'))"
-
-if [ "$BB_VERSION_GOT" != "$BB_VERSION" ] || [ "$NARGO_VERSION_GOT" != "$NARGO_VERSION" ]; then
-    if [ "${BB_ALLOW_VERSION_MISMATCH:-0}" = "1" ]; then
-        echo "  [!] Version mismatch allowed by BB_ALLOW_VERSION_MISMATCH=1."
-        echo "      Whatever this produces is scratch. Do not commit it."
-    else
-        echo ""
-        echo "[FAIL] Wrong toolchain. toolchain.env pins nargo ${NARGO_VERSION} and bb ${BB_VERSION}."
-        echo ""
-        echo "  The verification key can come out identical across bb versions while"
-        echo "  the PROOF format differs; that is how three circuits ended up with"
-        echo "  unverifiable proofs committed on 2026-09-03. So this refuses."
-        echo ""
-        echo "  Install the pinned pair:  scripts/install-toolchain.sh"
-        echo "  To compare versions on purpose: BB_ALLOW_VERSION_MISMATCH=1"
-        exit 1
-    fi
-fi
+. "${SCRIPT_DIR}/lib/toolchain.sh"
+echo "bb CLI version:    $("$BB_BIN" --version 2>/dev/null || echo 'not found') ($BB_BIN)"
+echo "nargo version:     $("$NARGO_BIN" --version 2>/dev/null | sed -n 's/^nargo version = //p') ($NARGO_BIN)"
 echo ""
 
 rm -f ./target/*.json ./target/*.sol
@@ -164,14 +148,16 @@ if [ "$HAS_POST_BUILD_HOOK" = false ] && [ -f "./Prover.toml" ]; then
 
     # 4. Generate Proof (Keccak oracle hash + ZK)
     echo "4. Generating Proof (Keccak + ZK)..."
+    PROVE_T0=$(python3 -c 'import time; print(time.time())')
     bb prove \
       -b "$CIRCUIT_JSON" \
       -w ./target/proof/witness.gz \
       -k ./target/vk/vk \
       -o ./target/proof \
       -t evm
+    PROVE_S=$(python3 -c "import time; print(f'{time.time() - $PROVE_T0:.1f}')")
     PROOF_SIZE=$(wc -c < ./target/proof/proof)
-    echo "Proof generation complete: $PROOF_SIZE bytes"
+    echo "Proof generation complete: $PROOF_SIZE bytes in ${PROVE_S} s (bb prove wall time)"
     echo ""
 
     # 5. Convert Proof to hex
@@ -236,7 +222,10 @@ echo "8. Generating SRS (reference string)..."
 # build on 2026-10-27 reused v1's 2^18 file for a 2^19 circuit.)
 SRS_STAMP="./target/${CIRCUIT_NAME}.srs.toolchain"
 BYTECODE_SHA=$(python3 -I -c 'import json,sys,hashlib; print(hashlib.sha256(json.load(open(sys.argv[1]))["bytecode"].encode()).hexdigest())' "$CIRCUIT_JSON")
-SRS_STAMP_WANT="${NOIR_RS_TAG} bytecode-sha256:${BYTECODE_SHA}"
+# "vk-sized" names the generator: since 2026-11-17 generate_srs.sh sizes the
+# file from the vk. Stamps without it come from noir-rs's srs_downloader, which
+# wrote two-point files for nargo 1.0.0 bytecode, so they are regenerated.
+SRS_STAMP_WANT="${NOIR_RS_TAG} vk-sized bytecode-sha256:${BYTECODE_SHA}"
 if [ -f "./target/${CIRCUIT_NAME}.srs" ] && [ "$(cat "$SRS_STAMP" 2>/dev/null)" != "$SRS_STAMP_WANT" ]; then
     echo "SRS was written for: $(cat "$SRS_STAMP" 2>/dev/null || echo 'an unrecorded noir-rs / circuit')"
     echo "  regenerating for:  ${SRS_STAMP_WANT}"
@@ -261,6 +250,28 @@ if [ ! -f "./target/${CIRCUIT_NAME}.srs" ]; then
     echo "Error: generate_srs.sh reported success but ./target/${CIRCUIT_NAME}.srs" >&2
     echo "  does not exist. Trusting an exit code over the artefact is how this" >&2
     echo "  repository shipped a build with no reference string." >&2
+    exit 1
+fi
+# The file must hold exactly the 2^k + 1 points the vk's circuit size asks for.
+# A generator that cannot read the bytecode once wrote a 276-byte, two-point
+# file for every circuit and reported success (2026-11-17), so the count is
+# checked here against the bb-written vk instead of trusting the generator.
+if ! python3 -I - "./target/vk/vk" "./target/${CIRCUIT_NAME}.srs" <<'PY'
+import struct, sys
+k = int.from_bytes(open(sys.argv[1], 'rb').read()[:32], 'big')
+blob = open(sys.argv[2], 'rb').read()
+want = max(1 << k, 512) + 1  # generate_srs.sh / the vendored noir-rs get_srs_size
+g1_len = struct.unpack('<Q', blob[:8])[0] if len(blob) >= 8 else -1
+got = struct.unpack('<I', blob[-4:])[0] if len(blob) >= 4 else -1
+size_ok = len(blob) == 8 + want * 64 + 8 + 128 + 4
+if not (size_ok and g1_len == want * 64 and got == want):
+    sys.exit(f'{sys.argv[2]}: {len(blob)} bytes, {got} points; the vk says 2^{k}, so max(2^{k}, 512) + 1 = {want} points '
+             f'({8 + want * 64 + 8 + 128 + 4} bytes)')
+print(f'SRS point count matches the vk: max(2^{k}, 512) + 1 = {want}')
+PY
+then
+    rm -f "./target/${CIRCUIT_NAME}.srs" "$SRS_STAMP"
+    echo "Error: the reference string does not match this circuit's size; removed it." >&2
     exit 1
 fi
 echo "$SRS_STAMP_WANT" > "$SRS_STAMP"
@@ -299,20 +310,29 @@ echo "SRS ready: $(wc -c < "./target/${CIRCUIT_NAME}.srs") bytes"
 echo ""
 
 echo "9. Publishing digests..."
-if ! "${SCRIPT_DIR}/write-digests.sh"; then
-    echo "Error: digest publication failed." >&2
-    echo "  The app verifies every downloaded file against these; without them it" >&2
-    echo "  falls back to comparing byte counts." >&2
-    exit 1
-fi
-for manifest in "./target/SHA256SUMS" "./target/vk/SHA256SUMS"; do
-    if [ ! -f "$manifest" ]; then
-        echo "Error: $manifest was not written." >&2
+# A gitignored target/ (a prototype such as oprf-nullifier-poc, a probe) is
+# never committed or downloaded, and write-digests.sh skips it, so there is
+# nothing to publish -- and running it would only rewrite every other
+# circuit's manifests from whatever artefacts sit on disk.
+if git -C "$CIRCUIT_DIR" check-ignore -q ./target; then
+    echo "./target is gitignored: nothing is published, so no digests (write-digests.sh not run)"
+    echo ""
+else
+    if ! "${SCRIPT_DIR}/write-digests.sh"; then
+        echo "Error: digest publication failed." >&2
+        echo "  The app verifies every downloaded file against these; without them it" >&2
+        echo "  falls back to comparing byte counts." >&2
         exit 1
     fi
-done
-echo "Digests published"
-echo ""
+    for manifest in "./target/SHA256SUMS" "./target/vk/SHA256SUMS"; do
+        if [ ! -f "$manifest" ]; then
+            echo "Error: $manifest was not written." >&2
+            exit 1
+        fi
+    done
+    echo "Digests published"
+    echo ""
+fi
 
 echo "=================================================="
 echo "Build complete: ${CIRCUIT_DIR_NAME}"

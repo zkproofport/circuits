@@ -45,9 +45,11 @@ fn server_kind_garbage_signature_is_refused() {
     verify_statement([1, 2, 3], KIND_SERVER, garbage_sig(), empty_chain());
 }
 
-// The all-zero signature: r = 0 is never a valid ECDSA signature. The
-// solver refuses it before the assert (ACVM's P-256 black box).
-#[test(should_fail_with = "Signature provided for ECDSA verification is zero")]
+// The all-zero signature: r = 0 is never a valid ECDSA signature. Up to nargo
+// 1.0.0-beta.19 ACVM's P-256 black box refused it in the solver ("Signature
+// provided for ECDSA verification is zero"); from 1.0.0 the black box returns
+// false and the circuit's own assert refuses it.
+#[test(should_fail_with = "Statement signature is invalid")]
 fn server_kind_zero_signature_is_refused() {
     verify_statement([1, 2, 3], KIND_SERVER, [0; 64], empty_chain());
 }

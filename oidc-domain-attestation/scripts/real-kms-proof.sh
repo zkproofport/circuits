@@ -16,6 +16,9 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# nargo and bb from the versioned folders toolchain.env pins (never PATH).
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/lib/toolchain.sh"
 CIRCUIT_DIR="$(dirname "$SCRIPT_DIR")"
 VECTORS="$CIRCUIT_DIR/test-vectors"
 CASE=real_kms_google

@@ -18,9 +18,8 @@ set -eu
 [ $# -ge 1 ] || { echo "usage: $0 <circuit-dir> [...]" >&2; exit 1; }
 CIRCUITS=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 # shellcheck disable=SC1091
-. "$CIRCUITS/toolchain.env"
-[ "$(bb --version)" = "$BB_VERSION" ] || { echo "bb is $(bb --version), toolchain.env pins $BB_VERSION" >&2; exit 1; }
-[ "$(nargo --version | sed -n 's/^nargo version = //p')" = "$NARGO_VERSION" ] || { echo "nargo is not $NARGO_VERSION" >&2; exit 1; }
+# nargo and bb from the versioned folders toolchain.env pins (never PATH).
+. "$CIRCUITS/scripts/lib/toolchain.sh"
 
 for arg in "$@"; do
   d=$(cd "$CIRCUITS" && cd "$arg" && pwd)

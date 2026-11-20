@@ -54,6 +54,8 @@ const fs = require('fs');
 const path = require('path');
 const { ethers } = require('../node_modules/ethers');
 const anchors = require('../statement-signer/anchors');
+const oprf = require('../oprf-nullifier/oprf');
+const { signalHash: signalHashOf, FIXTURE_REQUEST_ID } = require('../lib/signal-hash');
 const {
   APP_ID, KIND_APP, KIND_SERVER, TBS_MAX, ATT_AUTH_MAX, ASSERT_AUTH_MAX, AAGUID_PROD, AAGUID_DEV,
   N_P256, N_P384, SIG_ALG_SHA256, sha256, tlv, seq, credentialTbs, ecKey, toLowS, signLowS, highS,
@@ -149,17 +151,19 @@ function main() {
   const otherCountry = PROFILE.country ? (country.toString('ascii') === 'US' ? 'JP' : 'US') : null;
   const LIST = PROFILE.country ? { list: [otherCountry, country.toString('ascii')], length: 2, included: true } : null;
   const pub = ethers.getBytes(wallet.signingKey.publicKey);
-  const scope = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes(SCOPE_STRING)));
-  const secret = ethers.getBytes(ethers.keccak256(ethers.concat([userAddress, CIRCUIT_TAG])));
-  const nullifier = ethers.getBytes(ethers.keccak256(ethers.concat([secret, scope])));
+  // The OPRF nullifier (../oprf-nullifier): the circuit id's test key, the
+  // nodes' answer computed locally. The statement binds the scope Field's 32
+  // bytes big-endian (keccak256(SCOPE_STRING) mod p).
+  const oprfValues = oprf.values({ circuitId: CIRCUIT_ID, address: ethers.hexlify(userAddress), scopeString: SCOPE_STRING });
+  const scope = oprf.fieldBytes(oprfValues.scope);
   const ZERO32 = new Uint8Array(32);
 
   // The two requests a wallet can sign.
-  const signalHash = ethers.getBytes(ethers.solidityPackedKeccak256(
-    ['address', 'string', 'string'], [wallet.address, SCOPE_STRING, CIRCUIT_ID]));
+  // signal_hash by the app's rule (../lib/signal-hash.js): no wallet in it.
+  const signalHash = signalHashOf({ scope: SCOPE_STRING, circuitId: CIRCUIT_ID, requestId: FIXTURE_REQUEST_ID });
   const domain = { name: `ZKProofport ${PROFILE.label} fixture`, version: '1', chainId: 8453, verifyingContract: '0x0000000000000000000000000000000000000001' };
-  const types = { Join: [{ name: 'member', type: 'address' }, { name: 'nonce', type: 'string' }] };
-  const message = { member: wallet.address, nonce: 'coinbase-attestation-v2-1' };
+  const types = { Join: [{ name: 'group', type: 'string' }, { name: 'nonce', type: 'string' }] };
+  const message = { group: 'ZKProofport fixture group', nonce: 'coinbase-attestation-v2-1' };
   const requests = {
     action: {
       signal: ZERO32,
@@ -278,8 +282,7 @@ signal_hash = ${arr(req.signal)}
 domain_separator = ${arr(req.domainSeparator)}
 action_hash = ${arr(req.actionHash)}
 signer_list_merkle_root = ${arr(tx.signer_list_merkle_root)}
-${countryToml}scope = ${arr(scope)}
-nullifier = ${arr(o.nullifier ?? nullifier)}
+${countryToml}${oprf.publicToml(o.oprf ?? oprfValues, o.oprfPublic ?? {})}
 attested_at = ${o.attestedAt ?? attestedAt}
 
 user_address = ${arr(userAddress)}
@@ -308,6 +311,8 @@ att_auth_data_len = ${chain.attAuth.length}
 att_client_data_hash = ${arr(chain.attCdh)}
 assertion_auth_data = ${arr(pad(chain.assertAuth, ASSERT_AUTH_MAX, 'assertion authData'))}
 assertion_auth_data_len = ${chain.assertAuth.length}
+
+${oprf.privateToml(o.oprf ?? oprfValues)}
 `;
   }
 
@@ -354,7 +359,10 @@ assertion_auth_data_len = ${chain.assertAuth.length}
     if (Buffer.compare(Buffer.from(kyc.user_address), userAddress) !== 0) throw new Error(`${kycTomlPath} is for another wallet`);
     const kycTxCountry = txCountry(kyc);
     const kycTag = tagOf('coinbase_attestation');
-    const kycSecret = ethers.getBytes(ethers.keccak256(ethers.concat([userAddress, kycTag])));
+    // The same wallet's nullifier in the same (domain, scope) under the KYC
+    // circuit's key.
+    const kycOprf = oprf.values({ circuitId: 'coinbase_attestation', address: ethers.hexlify(userAddress), scopeString: SCOPE_STRING });
+    if (kycOprf.nullifier === oprfValues.nullifier) throw new Error('KYC and Country fixture keys give one nullifier');
     const kycStatement = Buffer.concat([clientData(A, { tag: kycTag, schema: KYC_SCHEMA }).subarray(0, 225), country]);
     return {
       // accepted
@@ -377,7 +385,7 @@ assertion_auth_data_len = ${chain.assertAuth.length}
       client_kyc_tag: { clientData: clientData(A, { tag: kycTag }) },
       client_kyc_schema: { clientData: clientData(A, { schema: KYC_SCHEMA }) },
       kyc_statement_replay: { kind: 'server', clientData: kycStatement },
-      kyc_nullifier: { nullifier: ethers.getBytes(ethers.keccak256(ethers.concat([kycSecret, scope]))) },
+      kyc_nullifier: { oprfPublic: { nullifier: kycOprf.nullifier } },
       kyc_tx: {
         tx: kyc,
         list: { list: [kycTxCountry], length: 1, included: true },
@@ -424,7 +432,7 @@ assertion_auth_data_len = ${chain.assertAuth.length}
     client_revoked: { clientData: clientData(A, { revoked: 1 }) },
     client_other_schema: { clientData: clientData(A, { schema: sha256(Buffer.from('another schema')) }) },
     client_other_request: { clientData: clientData(A, { digest: requests.noAction.digest }) },
-    client_other_scope: { clientData: clientData(A, { scope: ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes('another-scope'))) }) },
+    client_other_scope: { clientData: clientData(A, { scope: oprf.fieldBytes(oprf.fieldOfString('another-scope')) }) },
     timestamp_changed: { attestedAt: attestedAt + 1 },
     stale_timestamp_resigned: { clientData: clientData(A, { timestamp: attestedAt - 3600 }) },
     // ---- another circuit's statement, signed by the same server key

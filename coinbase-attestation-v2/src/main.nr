@@ -4,8 +4,8 @@
 // Built from the coinbase_app_attest_poc prototype (circuits commit
 // b281485 / 33344e2). This package is named coinbase_attestation_v2 while v1
 // still lives in ../coinbase-attestation; the circuit ID it serves is the
-// canonical `coinbase_attestation`, and that is what its nullifier tag and
-// clientData carry. README.md has the clientData spec, what the server signs,
+// canonical `coinbase_attestation`, and that is what its clientData's
+// statement kind carries. README.md has the clientData spec, what the server signs,
 // the public inputs and the measurements.
 //
 // WHY A SIGNED STATEMENT
@@ -39,13 +39,13 @@
 //      attested_at, Coinbase's KYC schema and attester, revoked = 0, this
 //      request's digest and this scope, signed by the app (production App
 //      Attest environment only) or by the server.
-//   4. Nullifier: keccak(keccak(wallet ++ CIRCUIT_TAG) ++ scope).
+//   4. Nullifier: the OPRF nullifier for this wallet in (domain, scope)
+//      (../oprf-nullifier-libs), under the OPRF key whose hash is public.
 //
-// THE NULLIFIER TAG IS keccak256("coinbase_attestation"), the canonical id,
-// not this package's name: proofport-ai's computeWalletNullifier(address,
-// circuitId) derives the tag from the id.
+// THE STATEMENT KIND IS keccak256("coinbase_attestation"), the canonical id,
+// not this package's name (CIRCUIT_TAG in ../coinbase-v2-libs).
 
-use coinbase_libs::nullifier::verify_wallet_nullifier;
+use oprf_nullifier_libs::{OprfAnswer, verify_oprf_nullifier};
 use coinbase_v2_libs::{check_request_and_tx, CIRCUIT_TAG};
 use coinbase_v2_libs::client_data::{CLIENT_DATA_LEN, check_client_data};
 use statement_signer::{
@@ -59,8 +59,15 @@ fn main(
     domain_separator: pub [u8; 32],
     action_hash: pub [u8; 32],
     signer_list_merkle_root: pub [u8; 32],
-    scope: pub [u8; 32],
-    nullifier: pub [u8; 32],
+    // The OPRF nullifier (../oprf-nullifier-libs): the hash of the OPRF key the
+    // verifier pins for this proof type, the nullifier's domain and scope
+    // (keccak256(string) mod p each), and the nullifier -- one per wallet per
+    // (domain, scope) under that key, which nobody without the key can compute
+    // from an address.
+    oprf_key_hash: pub Field,
+    domain: pub Field,
+    scope: pub Field,
+    nullifier: pub Field,
 
     // ============ Public Input (the statement's time) ============
     // When the signer saw the attestation unrevoked (unix seconds). The
@@ -98,6 +105,15 @@ fn main(
     att_client_data_hash: [u8; 32],
     assertion_auth_data: [u8; ASSERT_AUTH_DATA_MAX_LEN],
     assertion_auth_data_len: u32,
+    // The OPRF nodes' answer for this wallet's query, and the blinding factor
+    // (private; ../oprf-nullifier-libs checks them).
+    oprf_public_key_x: Field,
+    oprf_public_key_y: Field,
+    oprf_beta: Field,
+    oprf_dlog_e: Field,
+    oprf_dlog_s: Field,
+    oprf_response_x: Field,
+    oprf_response_y: Field,
 ) {
     // ===================================================================
     // PARTS 1-2: this wallet signed THIS request; coinbase_attestation's
@@ -131,7 +147,7 @@ fn main(
         user_address,
         attested_at,
         message_hash,
-        scope,
+        scope.to_be_bytes::<32>(),
     );
     verify_statement(
         client_data,
@@ -150,7 +166,22 @@ fn main(
     );
 
     // ===================================================================
-    // PART 4: one nullifier per wallet per scope, nothing to choose
+    // PART 4: one nullifier per wallet per (domain, scope), from the OPRF
     // ===================================================================
-    verify_wallet_nullifier(user_address, CIRCUIT_TAG, scope, nullifier);
+    verify_oprf_nullifier(
+        user_address,
+        domain,
+        scope,
+        oprf_key_hash,
+        nullifier,
+        OprfAnswer {
+            public_key_x: oprf_public_key_x,
+            public_key_y: oprf_public_key_y,
+            beta: oprf_beta,
+            dlog_e: oprf_dlog_e,
+            dlog_s: oprf_dlog_s,
+            response_x: oprf_response_x,
+            response_y: oprf_response_y,
+        },
+    );
 }

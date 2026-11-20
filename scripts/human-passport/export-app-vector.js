@@ -42,7 +42,8 @@ function parseToml(text) {
     if (raw.startsWith('[')) {
       values[s.name] = JSON.parse(raw.replace(/0x[0-9a-fA-F]+/g, h => `"${h}"`).replace(/,\s*]/g, ']'));
     } else {
-      values[s.name] = raw;
+      // Field values are written quoted ("0x..."); numbers and bools bare.
+      values[s.name] = raw.replace(/^"(.*)"$/, '$1');
     }
   });
   return values;
@@ -65,7 +66,10 @@ for (const name of order) {
   if (!(name in v)) throw new Error(`Prover.toml has no ${name}`);
   push(v[name]);
 }
-if (flat.length !== 11164) throw new Error(`flat vector has ${flat.length} entries, expected 11164`);
+// 11,164 with the keccak nullifier (scope and nullifier 32 bytes each); the
+// OPRF nullifier (2026-11-17) publishes oprf_key_hash, domain, scope and
+// nullifier as one field each and adds 7 private fields: 11,164 - 64 + 4 + 7.
+if (flat.length !== 11111) throw new Error(`flat vector has ${flat.length} entries, expected 11111`);
 
 const hex = bytes => '0x' + bytes.map(b => BigInt(b).toString(16).padStart(2, '0')).join('');
 const dataLen = Number(v.score_data_len);
@@ -100,7 +104,20 @@ const vector = {
   issuerMerkleDepth: Number(v.issuer_merkle_depth),
   issuerMerkleProof: v.issuer_merkle_proof.slice(0, Number(v.issuer_merkle_depth)).map(hex),
   signerListMerkleRoot: hex(v.signer_list_merkle_root),
-  expectedNullifier: hex(v.nullifier),
+  // The OPRF nullifier's inputs (circuits oprf-nullifier-libs). The answer
+  // was computed with the circuit's TEST key (scripts/oprf-nullifier/oprf.js),
+  // not a deployment key.
+  oprf: {
+    keyHash: v.oprf_key_hash,
+    domain: v.domain,
+    scope: v.scope,
+    publicKey: { x: v.oprf_public_key_x, y: v.oprf_public_key_y },
+    beta: v.oprf_beta,
+    dlogE: v.oprf_dlog_e,
+    dlogS: v.oprf_dlog_s,
+    response: { x: v.oprf_response_x, y: v.oprf_response_y },
+  },
+  expectedNullifier: v.nullifier,
   expectedFlat: flat,
 };
 fs.writeFileSync(out, JSON.stringify(vector, null, 1) + '\n');

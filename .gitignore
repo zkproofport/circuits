@@ -36,6 +36,8 @@ cache/
 
 # Foundry dependencies (restore with: forge install)
 lib/
+# scripts/lib holds the shared shell helpers (toolchain.sh), not forge libraries.
+!scripts/lib/
 
 # Acceptance fixtures and per-case logs, derived from the committed-nowhere
 # Prover fixtures on every run. Any circuit, not a list that goes stale: arc
@@ -100,3 +102,5 @@ human-passport-score/target/*.srs
 human-passport-mutant/
 # Executed only, never shipped: no artefacts to keep.
 human-passport-real-issuer-check/target/
+# OPRF nullifier library mutation copy (scripts/oprf-nullifier/mutation-check.sh).
+oprf-nullifier-libs-mutant/

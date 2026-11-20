@@ -11,7 +11,8 @@
 // 2. The SAME key signed a GIWA Sepolia transaction calling
 //    `payAndIssueEAS()` on the Playground faucet, which is the call that
 //    issues the Dojang "Verified Address" attestation to its sender.
-// 3. One nullifier per wallet per scope.
+// 3. One nullifier per wallet per (domain, scope): the OPRF nullifier
+//    (../oprf-nullifier-libs).
 //
 // WHAT IT DOES NOT PROVE, AND WHY THAT WAS CHOSEN
 //
@@ -26,11 +27,11 @@
 // the inputs looks the transaction up on chain, and that lookup is outside
 // the proof.
 
-use dep::std;
-use dep::coinbase_libs::nullifier::verify_wallet_nullifier;
-use dep::coinbase_libs::signed_message::signed_digest;
-use dep::coinbase_libs::ethereum::derive_address_from_pubkey;
-use dep::coinbase_libs::signed_tx::{parse_signed_tx, MAX_TX_LEN};
+use oprf_nullifier_libs::{OprfAnswer, verify_oprf_nullifier};
+use std;
+use coinbase_libs::signed_message::signed_digest;
+use coinbase_libs::ethereum::derive_address_from_pubkey;
+use coinbase_libs::signed_tx::{parse_signed_tx, MAX_TX_LEN};
 
 /// GIWA Sepolia.
 global GIWA_SEPOLIA_CHAIN_ID: u64 = 91342;
@@ -46,14 +47,6 @@ global PLAYGROUND_FAUCET: [u8; 20] = [
 /// payAndIssueEAS() -- 0xb19e5904. Takes no arguments: the recipient is the sender.
 global PAY_AND_ISSUE_SELECTOR: [u8; 4] = [0xb1, 0x9e, 0x59, 0x04];
 
-/// keccak256("dojang_playground"), compiled in so no input can move the nullifier.
-global CIRCUIT_TAG: [u8; 32] = [
-    0x3e, 0x28, 0x69, 0xcc, 0xf9, 0x1d, 0x1b, 0xce,
-    0x22, 0xfb, 0x34, 0xa3, 0x24, 0xb4, 0x35, 0xf3,
-    0x7e, 0xd3, 0x12, 0xbf, 0x71, 0x23, 0x47, 0x67,
-    0x82, 0x43, 0xe9, 0x98, 0xe3, 0x3f, 0xab, 0xfe,
-];
-
 fn main(
     // ============ Public Inputs ============
 
@@ -63,10 +56,15 @@ fn main(
     domain_separator: pub [u8; 32],
     // EIP-712 hashStruct of the action; zero when no action is bound.
     action_hash: pub [u8; 32],
-    // Sybil domain. One nullifier per (wallet, scope).
-    scope: pub [u8; 32],
-    // keccak(keccak(user_address ++ CIRCUIT_TAG) ++ scope)
-    nullifier: pub [u8; 32],
+    // The OPRF nullifier (../oprf-nullifier-libs): the hash of the OPRF key the
+    // verifier pins for this proof type, the nullifier's domain and scope
+    // (keccak256(string) mod p each), and the nullifier -- one per wallet per
+    // (domain, scope) under that key, which nobody without the key can compute
+    // from an address.
+    oprf_key_hash: pub Field,
+    domain: pub Field,
+    scope: pub Field,
+    nullifier: pub Field,
 
     // ============ Private Inputs ============
 
@@ -78,6 +76,15 @@ fn main(
     // The faucet transaction, legacy or EIP-1559, zero-padded.
     raw_transaction: [u8; MAX_TX_LEN],
     tx_length: u32,
+    // The OPRF nodes' answer for this wallet's query, and the blinding factor
+    // (private; ../oprf-nullifier-libs checks them).
+    oprf_public_key_x: Field,
+    oprf_public_key_y: Field,
+    oprf_beta: Field,
+    oprf_dlog_e: Field,
+    oprf_dlog_s: Field,
+    oprf_response_x: Field,
+    oprf_response_y: Field,
 ) {
     // PART 1: this wallet signed this request
     let derived_user_address = derive_address_from_pubkey(user_pubkey_x, user_pubkey_y);
@@ -106,6 +113,21 @@ fn main(
     assert(tx.data_length == 4, "Calldata is not a bare payAndIssueEAS() call");
     assert(tx.selector == PAY_AND_ISSUE_SELECTOR, "Transaction does not call payAndIssueEAS()");
 
-    // PART 3: one nullifier per wallet per scope
-    verify_wallet_nullifier(user_address, CIRCUIT_TAG, scope, nullifier);
+    // PART 3: one nullifier per wallet per (domain, scope), from the OPRF
+    verify_oprf_nullifier(
+        user_address,
+        domain,
+        scope,
+        oprf_key_hash,
+        nullifier,
+        OprfAnswer {
+            public_key_x: oprf_public_key_x,
+            public_key_y: oprf_public_key_y,
+            beta: oprf_beta,
+            dlog_e: oprf_dlog_e,
+            dlog_s: oprf_dlog_s,
+            response_x: oprf_response_x,
+            response_y: oprf_response_y,
+        },
+    );
 }

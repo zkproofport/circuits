@@ -8,9 +8,11 @@
 
 Typical use: after deploying to mainnet, show that each new contract is
 byte-for-byte the testnet contract real proofs were verified against. Reads
-deployments/<chain>/<Name>.json and deployments/<chain>/ZKTranscriptLib.json,
-fetches each contract's runtime code with `cast code`, replaces the linked
-library address (it differs per chain) and drops the trailing Solidity
+deployments/<chain>/<Name>.json, fetches each contract's runtime code with
+`cast code`, replaces every linked library address (they differ per chain:
+the record's "libraries" map since bb 6.0.0, and for a bb 4.2 record its
+"library", the address in deployments/<chain>/ZKTranscriptLib.json) with a
+placeholder named after the library, and drops the trailing Solidity
 metadata (its IPFS hash differs between builds of the same source), then
 compares. Exit 1 on any difference or missing record.
 
@@ -51,12 +53,26 @@ def rpc(chain):
     return env_value(*RPC_VARS[chain])
 
 
-def record(chain, name):
+def load(chain, name):
     path = os.path.join(REPO, 'deployments', str(chain), f'{name}.json')
     if not os.path.exists(path):
         raise SystemExit(f'No record {path}')
     with open(path) as f:
-        return json.load(f)['address'].lower()
+        return json.load(f)
+
+
+def record(chain, name):
+    return load(chain, name)['address'].lower()
+
+
+def linked(chain, name):
+    """{library name: address} the verifier record says it links."""
+    data = load(chain, name)
+    if 'libraries' in data:
+        return {lib: v['address'].lower() for lib, v in data['libraries'].items()}
+    if 'library' in data:
+        return {'ZKTranscriptLib': data['library'].lower()}
+    raise SystemExit(f'deployments/{chain}/{name}.json names no linked library ("libraries" or "library")')
 
 
 def runtime(chain, name):
@@ -64,7 +80,11 @@ def runtime(chain, name):
                          capture_output=True, text=True, check=True).stdout.strip().lower()
     if out in ('', '0x'):
         raise SystemExit(f'No code for {name} on {chain}')
-    code = out[2:].replace(record(chain, 'ZKTranscriptLib')[2:], 'L' * 40)
+    code = out[2:]
+    for lib, address in sorted(linked(chain, name).items()):
+        if address[2:] not in code:
+            raise SystemExit(f'{name} on {chain}: its record links {lib} {address}, which is not in its code')
+        code = code.replace(address[2:], f'<{lib}>'.ljust(40, '_'))
     cut = code.rfind(METADATA_MARKER)
     return code[:cut] if cut > 0 else code
 

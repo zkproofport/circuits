@@ -75,12 +75,18 @@ pub fn decode_payload<let N: u32>(
     for i in 0..N {
         extended[i] = data.storage()[i];
     }
+    // Bytes past the payload are zeroed: noir_base64's decode_var accepts only
+    // 0 past the length, and nargo 1.0.0's from_parts no longer zeroes them
+    // (it did up to 1.0.0-beta.19), so a producer that leaves bytes in
+    // partial_data's storage past its length would otherwise fail to prove.
+    let payload_len = data.len() - base64_decode_offset;
     let mut rotated: [u8; N] = [0; N];
     for i in 0..N {
-        rotated[i] = extended[i + base64_decode_offset];
+        if i < payload_len {
+            rotated[i] = extended[i + base64_decode_offset];
+        }
     }
-    let to_decode: BoundedVec<u8, N> =
-        BoundedVec::from_parts(rotated, data.len() - base64_decode_offset);
+    let to_decode: BoundedVec<u8, N> = BoundedVec::from_parts(rotated, payload_len);
     let payload: BoundedVec<u8, ((N / 4) * 3)> = BASE64_URL_DECODER::decode_var(to_decode);
 
     StringBody::new(payload.storage(), payload.len())

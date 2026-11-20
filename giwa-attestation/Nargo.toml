@@ -7,3 +7,4 @@ authors = ["zkproofport"]
 [dependencies]
 keccak256 = { path = "../deps/keccak256" }
 coinbase_libs = { path = "../coinbase-libs" }
+oprf_nullifier_libs = { path = "../oprf-nullifier-libs" }
