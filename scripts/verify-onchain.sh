@@ -36,6 +36,21 @@
 # modulus"); what this tells a verifier is whether the contract does too (see
 # oprf-nullifier-libs/README.md, "What a verifier checks").
 #
+# TAMPER_FIELDS=<field,...> (optional): after the three calls above, send the
+# honest proof once per named proof field with that field changed (value + 1
+# mod p, so it stays a field element and only the maths can notice), and
+# require each call to be rejected. Offsets come from the verifier's own
+# constants (LOG_N, NUMBER_OF_ENTITIES, NUM_MASKING_POLYNOMIALS,
+# PAIRING_POINTS_SIZE, ZK_BATCHED_RELATION_PARTIAL_LENGTH) laid out the way
+# its loadProof reads a ZK proof, and the computed size must equal the proof's
+# size, or the run stops. Field names:
+#   libraSum | libraEvaluation
+#   sumcheckUnivariate:<round>:<index>   (round < LOG_N, index < ZK_BATCHED_RELATION_PARTIAL_LENGTH)
+#   sumcheckEvaluation:<i> | geminiAEvaluation:<i> | libraPolyEval:<i> (i < 4)
+#   default   = libraEvaluation,libraSum,sumcheckUnivariate:0:0,libraPolyEval:0,
+#               libraPolyEval:1,libraPolyEval:2,libraPolyEval:3
+# Unset: nothing extra is sent (the behaviour before this option).
+#
 # NETWORK `anvil`: the verifier `deploy_verifier.sh <pkg> anvil` deployed to a
 # running anvil, read from that run's broadcast under DEPLOY_OUTPUT_DIR
 # (ANVIL_RPC_URL names the node). VERIFIER_ADDRESS, anvil only, names a
@@ -315,6 +330,12 @@ elif mode == 'proof':
     at = (len(proof) // 32 // 2) * 32 + 31
     proof = proof[:at] + bytes([proof[at] ^ 1]) + proof[at + 1:]
     print(f'byte {at} of {len(proof)}', file=sys.stderr)
+elif mode.startswith('field:'):
+    # field:<byte offset>: the 32-byte word there, plus one, mod p.
+    at = int(mode.split(':')[1])
+    p = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+    v = (int.from_bytes(proof[at:at + 32], 'big') + 1) % p
+    proof = proof[:at] + v.to_bytes(32, 'big') + proof[at + 32:]
 if len(raw_inputs) % 32:
     sys.exit(f'public_inputs is {len(raw_inputs)} bytes, not a multiple of 32')
 words = [raw_inputs[i:i + 32] for i in range(0, len(raw_inputs), 32)]
@@ -402,6 +423,82 @@ if [ "$TAMPERED_PROOF" = TRUE ] || [ -z "$TAMPERED_PROOF" ]; then
 fi
 echo "   rejected (${FLIP_AT}): $TAMPERED_PROOF"
 echo ""
+
+if [ -n "${TAMPER_FIELDS:-}" ]; then
+    # The verifier source whose constants give the layout: the one deployed
+    # here (local), else the package's committed verifier.
+    if [ -z "${SOL_FILE:-}" ]; then
+        CIRCUIT_NAME=$(grep -m1 '^name' "$CIRCUIT_DIR_NAME/Nargo.toml" | sed 's/.*= *"\(.*\)"/\1/')
+        SOL_FILE="$TARGET/$(pascal "$CIRCUIT_NAME").sol"
+    fi
+    [ -f "$SOL_FILE" ] || { echo "TAMPER_FIELDS: no verifier source $SOL_FILE to read the proof layout from" >&2; exit 1; }
+    FIELD_OFFSETS=$(python3 - "$SOL_FILE" "$PROOF_DIR/proof" "$TAMPER_FIELDS" <<'PY'
+import re, sys
+sol_path, proof_path, wanted = sys.argv[1:4]
+sol = open(sol_path).read()
+def const(name):
+    m = re.search(r'^uint256 constant ' + name + r' = (\d+);', sol, re.M)
+    if not m:
+        sys.exit(f'{sol_path} has no "uint256 constant {name} = <n>;" -- not a layout this check knows')
+    return int(m.group(1))
+if 'libraEvaluation' not in sol or 'struct ZKProof' not in sol:
+    sys.exit(f'{sol_path} is not a ZK (Libra) verifier; TAMPER_FIELDS knows only that layout')
+log_n = const('LOG_N')
+entities = const('NUMBER_OF_ENTITIES') + const('NUM_MASKING_POLYNOMIALS')
+pairing = const('PAIRING_POINTS_SIZE')
+partial = const('ZK_BATCHED_RELATION_PARTIAL_LENGTH')
+F, G = 32, 64
+# The order the verifier's loadProof reads a ZK proof.
+at = pairing * F + 10 * G          # pairing points; masking poly, w1-w3, read counts/tags, w4, inverses, zPerm, libra[0]
+lib_sum = at; at += F
+univ = at; at += log_n * partial * F
+evals = at; at += entities * F
+lib_eval = at; at += F
+at += 2 * G                        # libra[1], libra[2]
+at += (log_n - 1) * G              # gemini fold commitments
+gemini_a = at; at += log_n * F
+lib_poly = at; at += 4 * F
+at += 2 * G                        # shplonk Q, KZG quotient
+size = len(open(proof_path, 'rb').read())
+if at != size:
+    sys.exit(f'layout from {sol_path} gives a {at}-byte proof; {proof_path} is {size} bytes. Not tampering by guessed offsets.')
+if wanted == 'default':
+    wanted = 'libraEvaluation,libraSum,sumcheckUnivariate:0:0,libraPolyEval:0,libraPolyEval:1,libraPolyEval:2,libraPolyEval:3'
+def bounded(i, n, what):
+    if not 0 <= i < n:
+        sys.exit(f'{what} index {i} out of range (0..{n - 1})')
+    return i
+for name in wanted.split(','):
+    parts = name.strip().split(':')
+    kind = parts[0]
+    try:
+        idx = [int(x) for x in parts[1:]]
+    except ValueError:
+        sys.exit(f'bad field {name!r}')
+    if kind == 'libraSum' and not idx: off = lib_sum
+    elif kind == 'libraEvaluation' and not idx: off = lib_eval
+    elif kind == 'sumcheckUnivariate' and len(idx) == 2:
+        off = univ + (bounded(idx[0], log_n, 'round') * partial + bounded(idx[1], partial, 'univariate')) * F
+    elif kind == 'sumcheckEvaluation' and len(idx) == 1: off = evals + bounded(idx[0], entities, 'evaluation') * F
+    elif kind == 'geminiAEvaluation' and len(idx) == 1: off = gemini_a + bounded(idx[0], log_n, 'gemini') * F
+    elif kind == 'libraPolyEval' and len(idx) == 1: off = lib_poly + bounded(idx[0], 4, 'libraPolyEval') * F
+    else:
+        sys.exit(f'unknown field {name!r}. Known: libraSum, libraEvaluation, sumcheckUnivariate:<r>:<i>, sumcheckEvaluation:<i>, geminiAEvaluation:<i>, libraPolyEval:<i>, default')
+    print(f'{name.strip()} {off}')
+PY
+) || exit 1
+    echo "4c. On-chain, one named proof field changed (value + 1 mod p) each:"
+    while read -r FIELD OFFSET; do
+        [ -n "$FIELD" ] || continue
+        FIELD_RESULT=$(onchain_call "field:$OFFSET")
+        if [ "$FIELD_RESULT" = TRUE ] || [ -z "$FIELD_RESULT" ]; then
+            echo "   FAILED -- the contract accepted the proof with $FIELD (byte $OFFSET) changed (${FIELD_RESULT:-no answer})" >&2
+            exit 1
+        fi
+        echo "   rejected $FIELD (byte $OFFSET): $FIELD_RESULT"
+    done <<< "$FIELD_OFFSETS"
+    echo ""
+fi
 
 if [ -n "${INPUT_PLUS_P_INDEX:-}" ]; then
     PLUS_P=$(onchain_call "plusp:$INPUT_PLUS_P_INDEX")

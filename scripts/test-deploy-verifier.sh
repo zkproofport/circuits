@@ -18,7 +18,10 @@
 #      address), record the verifier with both, and leave the bb 4.2 record
 #      byte for byte as it was.
 #   2. verify-onchain.sh accepts the honest proof on that verifier and rejects
-#      a changed public input and a changed proof byte.
+#      a changed public input and a changed proof byte; with
+#      TAMPER_FIELDS=default it also rejects each named proof field changed
+#      (libraEvaluation, libraSum, a round-0 sumcheck value, the four Libra
+#      opening values), and an unknown field name stops the run.
 #   3. Deploying oidc-domain-attestation and human-passport-score reuses both
 #      recorded libraries (no library transaction) and links the same
 #      addresses; human-passport-score is checked with its real proof.
@@ -198,6 +201,21 @@ if DEPLOY_OUTPUT_DIR="$OUT" "$SCRIPT_DIR/verify-onchain.sh" coinbase-attestation
     grep -E "rejected" "$WORK/v1.log" | sed 's/^/        /'
 else
     bad "verify-onchain.sh coinbase-attestation anvil"; cat "$WORK/v1.log"
+fi
+# TAMPER_FIELDS: each named field changed must be rejected, and a name it does
+# not know must stop the run.
+if TAMPER_FIELDS=default DEPLOY_OUTPUT_DIR="$OUT" "$SCRIPT_DIR/verify-onchain.sh" coinbase-attestation anvil > "$WORK/v1-fields.log" 2>&1 \
+    && [ "$(grep -c '^   rejected [a-zA-Z]*[:0-9]* (byte ' "$WORK/v1-fields.log")" -eq 7 ]; then
+    ok "TAMPER_FIELDS=default: libraEvaluation, libraSum, sumcheckUnivariate:0:0, libraPolyEval:0-3 each rejected"
+else
+    bad "TAMPER_FIELDS=default on coinbase-attestation anvil"; cat "$WORK/v1-fields.log"
+fi
+if TAMPER_FIELDS=notAField DEPLOY_OUTPUT_DIR="$OUT" "$SCRIPT_DIR/verify-onchain.sh" coinbase-attestation anvil > "$WORK/v1-badfield.log" 2>&1; then
+    bad "TAMPER_FIELDS=notAField was accepted"; cat "$WORK/v1-badfield.log"
+else
+    grep -q "unknown field 'notAField'" "$WORK/v1-badfield.log" \
+        && ok "TAMPER_FIELDS with an unknown field name refused" \
+        || { bad "unknown field refused for another reason"; cat "$WORK/v1-badfield.log"; }
 fi
 echo ""
 
