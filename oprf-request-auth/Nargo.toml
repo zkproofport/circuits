@@ -1,5 +1,5 @@
 [package]
-name = "oprf_request_auth_poc"
+name = "oprf_request_auth"
 type = "bin"
 version = "0.1.0"
 authors = ["zkproofport"]

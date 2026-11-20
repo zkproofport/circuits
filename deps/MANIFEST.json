@@ -157,7 +157,7 @@
       "commit": "fd37726215b59d3d4823ea7b1967b1da3525ed9d",
       "newest_reviewed": "v2.0.0",
       "content_sha256": "048bb2eae3bbb78e833c31b0096be09330207f5a1b3445e9b4fe9152004ebeca",
-      "hold": "v2.0.0 is what TACEO's public test network circuits use (TaceoLabs/oprf-testnet noir/*/Nargo.toml); it is NOT audited. v1.0.0 is the Least Authority audited tag (audits/ in the repo) and also compiles and passes its tests on nargo 1.0.0, but has the older API (verified_oprf takes the blinded response; no BabyJubJubPointInSubgroup). Prototype circuits only (oprf-request-auth-poc, oprf-nullifier-poc)."
+      "hold": "v2.0.0 is what TACEO's public test network circuits use (TaceoLabs/oprf-testnet noir/*/Nargo.toml); it is NOT audited. v1.0.0 is the Least Authority audited tag (audits/ in the repo) and also compiles and passes its tests on nargo 1.0.0, but has the older API (verified_oprf takes the blinded response; no BabyJubJubPointInSubgroup). Used by oprf-request-auth and the oprf-nullifier-poc prototype."
     }
   ]
 }

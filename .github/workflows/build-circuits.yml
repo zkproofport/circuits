@@ -132,6 +132,7 @@ jobs:
                      coinbase-country-attestation-v2 coinbase-country-attestation-v2-android \
                      coinbase-country-attestation-v2-android-factory \
                      human-passport-score \
+                     oprf-request-auth \
                      zktls; do
             echo "::group::$dir"
             SKIP_POST_BUILD=1 ./scripts/build.sh "$dir"
